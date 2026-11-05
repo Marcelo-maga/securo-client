@@ -106,8 +106,9 @@ jobs:
           cp -R .securo-config/scripts .securo-config/styles .securo-config/locales src/config/
           sed -i 's#styles/setup.css#config/styles/setup.css#; s#scripts/setup.js#config/scripts/setup.js#' src/config/config.html
           cp src-tauri/bridge/bootstrap.html src/index.html
+          cp src-tauri/bridge/mobile-overrides.css src/mobile-overrides.css
           npx esbuild src-tauri/bridge/http-bridge.js --bundle --format=iife --platform=browser --outfile=src/securo-http-bridge.js
-          node -e "const fs=require('fs'); const file='src/app.html'; const html=fs.readFileSync(file,'utf8'); if (!html.includes('securo-http-bridge.js')) fs.writeFileSync(file, html.replace(/<head>/i, '<head><script src=\"/securo-http-bridge.js\"></script>'));"
+          node -e "const fs=require('fs'); const file='src/app.html'; const html=fs.readFileSync(file,'utf8'); const injected=html.replace(/<head>/i, '<head><link rel=\"stylesheet\" href=\"/mobile-overrides.css\"><script src=\"/securo-http-bridge.js\"></script>'); fs.writeFileSync(file, injected);"
 
       - name: Initialize Android project
         run: npm run tauri -- android init
