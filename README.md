@@ -36,13 +36,13 @@ npm run tauri -- android init
 Gere um APK debug instalavel:
 
 ```bash
-npm run tauri -- android build --debug --apk
+npm run tauri -- android build --target aarch64 --debug --apk
 ```
 
 Os APKs ficam em `src-tauri/gen/android/app/build/outputs/apk/`. Para instalar um APK conectado via ADB:
 
 ```bash
-adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+adb install -r src-tauri/gen/android/app/build/outputs/apk/arm64-v8a/debug/app-arm64-v8a-debug.apk
 ```
 
 ### Build no GitHub Actions
