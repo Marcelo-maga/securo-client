@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Securo</title>
+  </head>
+  <body>
+    <p>Loading Securo...</p>
+    <script>
+      const invoke = window.__TAURI__?.core?.invoke;
+      const openConfig = () => window.location.replace("config/config.html");
+      if (!invoke) {
+        openConfig();
+      } else {
+        invoke("get_connection_settings")
+          .then((settings) => window.location.replace(settings.server_url ? "app.html" : "config/config.html"))
+          .catch(openConfig);
+      }
+    </script>
+  </body>
+</html>

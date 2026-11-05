@@ -95,10 +95,19 @@ jobs:
         shell: bash
         run: |
           test -d .securo-frontend/dist
+          mkdir -p .securo-config
+          cp src/setup.html .securo-config/config.html
+          cp -R src/scripts src/styles src/locales .securo-config/
           rm -rf src
           cp -R .securo-frontend/dist src
+          mv src/index.html src/app.html
+          mkdir -p src/config
+          cp .securo-config/config.html src/config/config.html
+          cp -R .securo-config/scripts .securo-config/styles .securo-config/locales src/config/
+          sed -i 's#styles/setup.css#config/styles/setup.css#; s#scripts/setup.js#config/scripts/setup.js#' src/config/config.html
+          cp src-tauri/bridge/bootstrap.html src/index.html
           npx esbuild src-tauri/bridge/http-bridge.js --bundle --format=iife --platform=browser --outfile=src/securo-http-bridge.js
-          node -e "const fs=require('fs'); const file='src/index.html'; const html=fs.readFileSync(file,'utf8'); if (!html.includes('securo-http-bridge.js')) fs.writeFileSync(file, html.replace(/<head>/i, '<head><script src=\"/securo-http-bridge.js\"></script>'));"
+          node -e "const fs=require('fs'); const file='src/app.html'; const html=fs.readFileSync(file,'utf8'); if (!html.includes('securo-http-bridge.js')) fs.writeFileSync(file, html.replace(/<head>/i, '<head><script src=\"/securo-http-bridge.js\"></script>'));"
 
       - name: Initialize Android project
         run: npm run tauri -- android init

@@ -14,7 +14,7 @@ const status = document.querySelector("#status");
 let copy;
 
 async function loadCopy() {
-  const response = await fetch(`locales/${locale}.json`);
+  const response = await fetch(new URL(`../locales/${locale}.json`, import.meta.url));
   if (!response.ok) throw new Error(`Could not load locale: ${response.status}`);
   return response.json();
 }
@@ -69,6 +69,7 @@ async function connect(event) {
   try {
     const serverUrl = await invoke("connect_server", { server_url: input.value, allow_invalid_certs: certificateCheckbox.checked });
     setConnected(serverUrl);
+    if (window.location.pathname.endsWith("/config.html")) window.location.replace("../app.html");
   } catch (error) {
     setStatus(errorMessage(error), "error");
     setBusy(false);
