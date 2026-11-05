@@ -1,6 +1,7 @@
 use reqwest::Client;
 use serde::Serialize;
-use tauri::{Manager, State};
+use tauri::State;
+use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
 const STORE_FILE: &str = "config.json";
