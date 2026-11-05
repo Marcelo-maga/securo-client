@@ -1,0 +1,229 @@
+name: Release Securo Native Client
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SECURO_REPOSITORY: securo-finance/securo
+  SECURO_FRONTEND_PATH: frontend
+  NODE_VERSION: "22"
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - name: macOS Intel
+            os: macos-13
+            target: x86_64-apple-darwin
+          - name: macOS Apple Silicon
+            os: macos-14
+            target: aarch64-apple-darwin
+          - name: Windows x64
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+
+    steps:
+      - name: Checkout native client
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install native client dependencies
+        run: npm install
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Fetch Securo frontend
+        shell: bash
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse \
+            "https://github.com/${SECURO_REPOSITORY}.git" .securo-frontend-repository
+          git -C .securo-frontend-repository sparse-checkout set "${SECURO_FRONTEND_PATH}"
+          mv ".securo-frontend-repository/${SECURO_FRONTEND_PATH}" .securo-frontend
+          rm -rf .securo-frontend-repository
+
+      - name: Cache Node and Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/pnpm
+            ~/.yarn/berry
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-${{ matrix.target }}-deps-${{ hashFiles('src-tauri/Cargo.lock', '.securo-frontend/package-lock.json', '.securo-frontend/yarn.lock', '.securo-frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-deps-
+
+      - name: Install and build Securo frontend
+        shell: bash
+        working-directory: .securo-frontend
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          elif [[ -f pnpm-lock.yaml ]]; then
+            corepack enable
+            pnpm install --frozen-lockfile
+          elif [[ -f yarn.lock ]]; then
+            corepack enable
+            yarn install --immutable
+          else
+            npm install
+          fi
+          npm run build
+
+      - name: Stage frontend for Tauri
+        shell: bash
+        run: |
+          test -d .securo-frontend/dist
+          rm -rf src
+          cp -R .securo-frontend/dist src
+          npx esbuild src-tauri/bridge/http-bridge.js --bundle --format=iife --platform=browser --outfile=src/securo-http-bridge.js
+          node -e "const fs=require('fs'); const file='src/index.html'; const html=fs.readFileSync(file,'utf8'); if (!html.includes('securo-http-bridge.js')) fs.writeFileSync(file, html.replace(/<head>/i, '<head><script src=\"/securo-http-bridge.js\"></script>'));"
+
+      - name: Build and publish desktop release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('manual-{0}', github.run_number) }}
+          releaseName: Securo Native Client ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('manual-{0}', github.run_number) }}
+          releaseBody: Automated build for ${{ matrix.name }}.
+          releaseDraft: false
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') || github.event_name == 'workflow_dispatch' }}
+          args: --target ${{ matrix.target }}
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout native client
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install native client dependencies
+        run: npm install
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973"
+
+      - name: Fetch Securo frontend
+        shell: bash
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse \
+            "https://github.com/${SECURO_REPOSITORY}.git" .securo-frontend-repository
+          git -C .securo-frontend-repository sparse-checkout set "${SECURO_FRONTEND_PATH}"
+          mv ".securo-frontend-repository/${SECURO_FRONTEND_PATH}" .securo-frontend
+          rm -rf .securo-frontend-repository
+
+      - name: Cache Node, Rust, and Android dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/pnpm
+            ~/.yarn/berry
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: android-deps-${{ hashFiles('src-tauri/Cargo.lock', '.securo-frontend/package-lock.json', '.securo-frontend/yarn.lock', '.securo-frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            android-deps-
+
+      - name: Install and build Securo frontend
+        shell: bash
+        working-directory: .securo-frontend
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          elif [[ -f pnpm-lock.yaml ]]; then
+            corepack enable
+            pnpm install --frozen-lockfile
+          elif [[ -f yarn.lock ]]; then
+            corepack enable
+            yarn install --immutable
+          else
+            npm install
+          fi
+          npm run build
+
+      - name: Stage frontend for Tauri
+        shell: bash
+        run: |
+          test -d .securo-frontend/dist
+          rm -rf src
+          cp -R .securo-frontend/dist src
+          npx esbuild src-tauri/bridge/http-bridge.js --bundle --format=iife --platform=browser --outfile=src/securo-http-bridge.js
+          node -e "const fs=require('fs'); const file='src/index.html'; const html=fs.readFileSync(file,'utf8'); if (!html.includes('securo-http-bridge.js')) fs.writeFileSync(file, html.replace(/<head>/i, '<head><script src=\"/securo-http-bridge.js\"></script>'));"
+
+      - name: Initialize Android project
+        run: npm run tauri -- android init
+
+      - name: Build Android APK
+        run: npm run tauri -- android build --apk
+
+      - name: Publish Android APK
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('manual-{0}', github.run_number) }}
+          files: |
+            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          fail_on_unmatched_files: true
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') || github.event_name == 'workflow_dispatch' }}
