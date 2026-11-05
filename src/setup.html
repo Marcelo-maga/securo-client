@@ -4,239 +4,43 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Securo | Connect your server</title>
-    <style>
-      :root { color-scheme: dark; font-family: "DM Sans", "Segoe UI", sans-serif; background: #090c12; color: #f8fafc; }
-      * { box-sizing: border-box; }
-      body { min-width: 320px; min-height: 100vh; margin: 0; background: #090c12; }
-      body::before, body::after { position: fixed; z-index: 0; width: 28rem; height: 28rem; border-radius: 50%; content: ""; pointer-events: none; filter: blur(80px); opacity: .16; }
-      body::before { top: -14rem; left: -10rem; background: #55d6d2; }
-      body::after { right: -12rem; bottom: -16rem; background: #3b82f6; }
-      .page { position: relative; z-index: 1; display: flex; min-height: 100vh; align-items: center; padding: 2rem 1.25rem; overflow: hidden; }
-      .layout { display: grid; width: 100%; max-width: 64rem; grid-template-columns: minmax(0, 1fr) 26.25rem; gap: 5rem; align-items: center; margin: auto; }
-      .intro { animation: fade-in .7s ease-out both; }
-      .brand { display: flex; align-items: center; gap: .75rem; margin-bottom: 2rem; color: #55d6d2; font-size: .75rem; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; }
-      .brand-mark { display: grid; width: 2rem; height: 2rem; place-items: center; border: 1px solid rgba(85,214,210,.3); border-radius: .5rem; background: rgba(85,214,210,.1); font-size: .875rem; }
-      .eyebrow, .step { margin: 0 0 1.25rem; color: #64748b; font-size: .75rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; }
-      h1, h2 { font-family: "Space Grotesk", "DM Sans", "Segoe UI", sans-serif; }
-      h1 { max-width: 36rem; margin: 0; color: #fff; font-size: clamp(3.1rem, 7vw, 5.25rem); font-weight: 600; letter-spacing: -.05em; line-height: .98; }
-      .accent { color: #55d6d2; }
-      .description { max-width: 28rem; margin: 1.75rem 0 0; color: #94a3b8; font-size: 1.05rem; line-height: 1.75; }
-      .security-note { display: flex; align-items: center; gap: .75rem; margin-top: 2.5rem; color: #64748b; font-size: .875rem; }
-      .security-note svg { width: 1.25rem; height: 1.25rem; color: #55d6d2; }
-      .panel { padding: 2rem; border: 1px solid #263140; border-radius: 1rem; background: rgba(17,23,34,.95); box-shadow: 0 24px 80px rgba(0,0,0,.38); animation: rise-in .7s .15s ease-out both; }
-      .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 2rem; }
-      .step { margin: 0 0 .5rem; color: #55d6d2; font-weight: 700; }
-      h2 { margin: 0; color: #fff; font-size: 1.5rem; font-weight: 600; }
-      .private { padding: .25rem .75rem; border: 1px solid #263140; border-radius: 99px; color: #64748b; font-size: .75rem; }
-      label { display: block; }
-      .field-label { margin-bottom: .5rem; color: #cbd5e1; font-size: .875rem; font-weight: 500; }
-      .url-input { width: 100%; padding: .875rem 1rem; border: 1px solid #263140; border-radius: .75rem; outline: none; background: #090c12; color: #fff; font: inherit; font-size: .875rem; transition: border-color .2s, box-shadow .2s; }
-      .url-input::placeholder { color: #475569; }
-      .url-input:hover { border-color: #64748b; }
-      .url-input:focus { border-color: #55d6d2; box-shadow: 0 0 0 4px rgba(85,214,210,.15); }
-      .url-input:disabled { cursor: not-allowed; opacity: .6; }
-      .certificate-option { display: flex; align-items: flex-start; gap: .75rem; margin-top: 1.5rem; padding: .875rem; border: 1px solid rgba(38,49,64,.8); border-radius: .75rem; background: rgba(255,255,255,.02); cursor: pointer; transition: border-color .2s, background .2s; }
-      .certificate-option:hover, .certificate-option:has(input:focus-visible) { border-color: #64748b; background: rgba(255,255,255,.04); }
-      .certificate-option input { width: 1rem; height: 1rem; flex: 0 0 auto; margin: .125rem 0 0; accent-color: #55d6d2; }
-      .certificate-title { display: block; color: #e2e8f0; font-size: .875rem; font-weight: 500; }
-      .certificate-hint { display: block; margin-top: .25rem; color: #64748b; font-size: .75rem; line-height: 1.6; }
-      .status { min-height: 1.5rem; margin: 0; padding-top: 1rem; color: #94a3b8; font-size: .875rem; line-height: 1.5; }
-      .status.error { color: #fb7185; }
-      .status.success { color: #55d6d2; }
-      .connect-button, .clear-button { width: 100%; border-radius: .75rem; font: inherit; font-size: .875rem; font-weight: 700; cursor: pointer; transition: transform .2s, background .2s, border-color .2s, opacity .2s; }
-      .connect-button { display: flex; align-items: center; justify-content: center; gap: .75rem; margin-top: .5rem; padding: .875rem 1rem; border: 0; background: #55d6d2; color: #090c12; }
-      .connect-button:hover { background: #7be2df; }
-      .connect-button:active { transform: scale(.99); }
-      .connect-button:focus-visible, .clear-button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(85,214,210,.25); }
-      .connect-button:disabled { cursor: wait; opacity: .6; }
-      .clear-button { margin-top: .75rem; padding: .75rem 1rem; border: 1px solid #263140; background: transparent; color: #cbd5e1; }
-      .clear-button:hover { border-color: #64748b; background: rgba(255,255,255,.04); }
-      .local-storage { margin: 1.75rem 0 0; color: #475569; font-size: .75rem; text-align: center; }
-      .local-storage span:first-child { color: #55d6d2; }
-      .hidden { display: none; }
-      .spinner { animation: spin .8s linear infinite; }
-      @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-      @keyframes rise-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      @media (max-width: 760px) { .page { align-items: flex-start; padding: 2.5rem 1.25rem; } .layout { grid-template-columns: 1fr; gap: 3rem; } .panel { max-width: 30rem; } }
-      @media (max-width: 420px) { .panel { padding: 1.5rem; } h1 { font-size: 3.25rem; } }
-      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
-    </style>
+    <title>Securo</title>
+    <link rel="stylesheet" href="styles/setup.css" />
   </head>
   <body>
     <main class="page">
       <div class="layout">
         <section class="intro" aria-labelledby="page-title">
-          <div class="brand">
-            <span class="brand-mark">S</span>
-            <span data-i18n="brand">Securo / private finance</span>
-          </div>
-          <p class="eyebrow" data-i18n="eyebrow">First access</p>
-          <h1 id="page-title">
-            <span data-i18n="titleLineOne">Your money.</span><br />
-            <span class="accent" data-i18n="titleLineTwo">Your server.</span>
-          </h1>
-          <p class="description" data-i18n="description">
-            Connect your self-hosted Securo instance. We will verify the connection before storing anything on this device.
-          </p>
+          <div class="brand"><span class="brand-mark">S</span><span data-i18n="brand"></span></div>
+          <p class="eyebrow" data-i18n="eyebrow"></p>
+          <h1 id="page-title"><span data-i18n="titleLineOne"></span><br /><span class="accent" data-i18n="titleLineTwo"></span></h1>
+          <p class="description" data-i18n="description"></p>
           <div class="security-note">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-              <path d="M12 3 5 6v5c0 4.7 2.9 8.6 7 10 4.1-1.4 7-5.3 7-10V6l-7-3Z" />
-              <path d="m9 12 2 2 4-4" />
-            </svg>
-            <span data-i18n="securityNote">Your connection details stay on this device.</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3 5 6v5c0 4.7 2.9 8.6 7 10 4.1-1.4 7-5.3 7-10V6l-7-3Z" /><path d="m9 12 2 2 4-4" /></svg>
+            <span data-i18n="securityNote"></span>
           </div>
         </section>
-
         <section class="panel" aria-labelledby="setup-title">
-          <div class="panel-header">
-            <div>
-              <p class="step" data-i18n="step">Step 01</p>
-              <h2 id="setup-title" data-i18n="heading">Connect your instance</h2>
-            </div>
-            <span class="private" data-i18n="private">Private</span>
-          </div>
-
+          <div class="panel-header"><div><p class="step" data-i18n="step"></p><h2 id="setup-title" data-i18n="heading"></h2></div><span class="private" data-i18n="private"></span></div>
           <form id="server-form" novalidate>
-            <label for="server-url" class="field-label" data-i18n="urlLabel">Server URL</label>
-            <input id="server-url" name="server-url" type="url" inputmode="url" autocomplete="url" required
-              placeholder="https://my-securo.com"
-              class="url-input" />
-
+            <label for="server-url" class="field-label" data-i18n="urlLabel"></label>
+            <input id="server-url" name="server-url" type="url" inputmode="url" autocomplete="url" required class="url-input" />
             <label for="allow-invalid-certs" class="certificate-option">
               <input id="allow-invalid-certs" type="checkbox" />
-              <span>
-                <span class="certificate-title" data-i18n="certLabel">Accept self-signed SSL certificates</span>
-                <span class="certificate-hint" data-i18n="certHint">Insecure. Use only on a trusted local network.</span>
-              </span>
+              <span><span class="certificate-title" data-i18n="certLabel"></span><span class="certificate-hint" data-i18n="certHint"></span></span>
             </label>
-
             <p id="status" class="status" role="status" aria-live="polite"></p>
             <button id="connect-button" type="submit" class="connect-button">
-              <span id="connect-label" data-i18n="connect">Connect</span>
+              <span id="connect-label" data-i18n="connect"></span>
               <svg id="button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
               <svg id="loading-icon" class="hidden spinner" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle opacity=".25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" /><path opacity=".9" fill="currentColor" d="M21 12a9 9 0 0 1-9 9v-3a6 6 0 0 0 6-6h3Z" /></svg>
             </button>
           </form>
-          <button id="clear-button" class="clear-button hidden" type="button" data-i18n="useAnother">Use another server</button>
-          <p class="local-storage"><span aria-hidden="true">◆</span> <span data-i18n="localStorage">Stored locally on this device</span></p>
+          <button id="clear-button" class="clear-button hidden" type="button" data-i18n="useAnother"></button>
+          <p class="local-storage"><span aria-hidden="true">◆</span> <span data-i18n="localStorage"></span></p>
         </section>
       </div>
     </main>
-
-    <script type="module">
-      const { invoke } = window.__TAURI__.core;
-
-      // The OS/browser language is used for the first render. Any language other
-      // than Brazilian Portuguese falls back to English so every label is covered.
-      const locale = navigator.language.toLowerCase().startsWith("pt-br") ? "pt-BR" : "en-US";
-      document.documentElement.lang = locale;
-
-      const copy = {
-        "en-US": {
-          brand: "Securo / private finance", eyebrow: "First access", titleLineOne: "Your money.", titleLineTwo: "Your server.",
-          description: "Connect your self-hosted Securo instance. We will verify the connection before storing anything on this device.",
-          securityNote: "Your connection details stay on this device.", step: "Step 01", heading: "Connect your instance", private: "Private",
-          urlLabel: "Server URL", certLabel: "Accept self-signed SSL certificates", certHint: "Insecure. Use only on a trusted local network.",
-          connect: "Connect", connecting: "Checking connection...", useAnother: "Use another server", localStorage: "Stored locally on this device",
-          loading: "Loading configuration...", checking: "Checking server health...", success: "Server verified and connected.",
-          invalid: "Enter a valid URL, including http:// or https://.", genericError: "We could not connect to this server. Check the URL and try again."
-        },
-        "pt-BR": {
-          brand: "Securo / finanças privadas", eyebrow: "Primeiro acesso", titleLineOne: "Seu dinheiro.", titleLineTwo: "Seu servidor.",
-          description: "Conecte sua instância self-hosted do Securo. Vamos verificar a conexão antes de salvar qualquer dado neste dispositivo.",
-          securityNote: "Os dados da sua conexão ficam neste dispositivo.", step: "Etapa 01", heading: "Conecte sua instância", private: "Privado",
-          urlLabel: "URL do servidor", certLabel: "Aceitar certificados SSL autoassinados", certHint: "Inseguro. Use apenas em uma rede local confiável.",
-          connect: "Conectar", connecting: "Verificando conexão...", useAnother: "Usar outro servidor", localStorage: "Armazenado localmente neste dispositivo",
-          loading: "Carregando configuração...", checking: "Consultando a saúde do servidor...", success: "Servidor verificado e conectado.",
-          invalid: "Informe uma URL válida, incluindo http:// ou https://.", genericError: "Não foi possível conectar ao servidor. Verifique a URL e tente novamente."
-        }
-      }[locale];
-
-      document.querySelectorAll("[data-i18n]").forEach((element) => { element.textContent = copy[element.dataset.i18n]; });
-      document.title = `Securo | ${copy.heading}`;
-
-      const form = document.querySelector("#server-form");
-      const input = document.querySelector("#server-url");
-      const certificateCheckbox = document.querySelector("#allow-invalid-certs");
-      const button = document.querySelector("#connect-button");
-      const buttonLabel = document.querySelector("#connect-label");
-      const buttonIcon = document.querySelector("#button-icon");
-      const loadingIcon = document.querySelector("#loading-icon");
-      const clearButton = document.querySelector("#clear-button");
-      const status = document.querySelector("#status");
-
-      function setStatus(message = "", kind = "") {
-        status.textContent = message;
-        status.className = `status${kind ? ` ${kind}` : ""}`;
-      }
-
-      function setBusy(isBusy) {
-        button.disabled = isBusy;
-        input.disabled = isBusy;
-        certificateCheckbox.disabled = isBusy;
-        buttonLabel.textContent = isBusy ? copy.connecting : copy.connect;
-        buttonIcon.classList.toggle("hidden", isBusy);
-        loadingIcon.classList.toggle("hidden", !isBusy);
-      }
-
-      function setConnected(serverUrl) {
-        input.value = serverUrl;
-        input.disabled = true;
-        certificateCheckbox.disabled = true;
-        button.hidden = true;
-        clearButton.classList.remove("hidden");
-        setStatus(copy.success, "success");
-      }
-
-      function friendlyError(error) {
-        const message = String(error).toLowerCase();
-        if (message.includes("url") || message.includes("http://") || message.includes("https://")) return copy.invalid;
-        return copy.genericError;
-      }
-
-      async function connect(event) {
-        event.preventDefault();
-        if (!input.value.trim()) { setStatus(copy.invalid, "error"); input.focus(); return; }
-        setBusy(true);
-        setStatus(copy.checking);
-        try {
-          // This invoke calls the Rust Tauri command, which probes /api/health
-          // and persists the URL only after a successful response.
-          const serverUrl = await invoke("connect_server", {
-            server_url: input.value,
-            allow_invalid_certs: certificateCheckbox.checked,
-          });
-          setConnected(serverUrl);
-        } catch (error) {
-          setStatus(friendlyError(error), "error");
-          setBusy(false);
-        }
-      }
-
-      async function clearServer() {
-        try {
-          await invoke("clear_server_url");
-          setBusy(false);
-          input.disabled = false;
-          certificateCheckbox.disabled = false;
-          button.hidden = false;
-          clearButton.classList.add("hidden");
-          setStatus();
-          input.focus();
-        } catch (error) { setStatus(friendlyError(error), "error"); }
-      }
-
-      form.addEventListener("submit", connect);
-      clearButton.addEventListener("click", clearServer);
-      setStatus(copy.loading);
-      invoke("get_connection_settings")
-        .then((settings) => {
-          certificateCheckbox.checked = settings.allow_invalid_certs;
-          if (settings.server_url) setConnected(settings.server_url); else setStatus();
-        })
-        .catch((error) => setStatus(friendlyError(error), "error"));
-    </script>
+    <script type="module" src="scripts/setup.js"></script>
   </body>
 </html>
