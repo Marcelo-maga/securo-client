@@ -44,13 +44,9 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
-          packages: |
-            platform-tools
-            platforms;android-35
-            build-tools;35.0.0
-            ndk;27.0.12077973
+          packages: platform-tools platforms;android-35 build-tools;35.0.0 ndk;27.0.12077973
           accept-android-sdk-licenses: true
 
       - name: Fetch Securo frontend
