@@ -18,7 +18,7 @@ Requisitos locais:
 - Node.js 22 ou superior
 - Rust com os targets `aarch64-linux-android`, `armv7-linux-androideabi` e `x86_64-linux-android`
 - Java 17
-- Android SDK com `platform-tools`, plataforma `android-37`, build-tools `37.0.0` e NDK `29.0.13846066`
+- Android SDK com `platform-tools`, plataforma `android-35`, build-tools `35.0.0` e NDK `27.0.12077973`
 
 Instale as dependencias JavaScript e os targets Rust:
 
@@ -52,7 +52,7 @@ O workflow em `.github/workflows/release.yml` executa somente o job Android. Ele
 - Push de uma tag `v*`: cria uma release versionada.
 - `workflow_dispatch`: executa manualmente e publica uma release prerelease identificada pelo numero da execucao.
 
-O workflow usa Android API 37, build-tools `37.0.0`, NDK `29.0.13846066` e Java 17. Ele publica o APK debug, assinado automaticamente com a chave de desenvolvimento, para instalacao e testes. A assinatura de release ainda nao esta configurada; um keystore e secrets de assinatura devem ser adicionados antes de distribuir pela Play Store.
+O workflow usa Android API 35, build-tools `35.0.0`, NDK `27.0.12077973` e Java 17. Ele publica o APK debug, assinado automaticamente com a chave de desenvolvimento, para instalacao e testes. A assinatura de release ainda nao esta configurada; um keystore e secrets de assinatura devem ser adicionados antes de distribuir pela Play Store.
 
  ## Arquitetura
 
