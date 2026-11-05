@@ -19,10 +19,10 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
         !(requestUrl.pathname === "/api" || requestUrl.pathname.startsWith("/api/"))) {
         return null;
       }
+      return requestUrl;
     } catch {
       return null;
     }
-    return null;
   }
 
   function getApiUrl(input, serverUrl) {
