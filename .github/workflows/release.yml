@@ -78,6 +78,8 @@ jobs:
         shell: bash
         working-directory: .securo-frontend
         run: |
+          cp ../src-tauri/bridge/mobile-overrides.css src/mobile-overrides.css
+          printf '\nimport "./mobile-overrides.css";\n' >> src/main.tsx
           if [[ -f package-lock.json ]]; then
             npm ci
           elif [[ -f pnpm-lock.yaml ]]; then
