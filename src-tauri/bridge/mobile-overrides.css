@@ -2,22 +2,24 @@
 svg[width="640"][height="640"] {
   width: min(42vw, 360px) !important;
   height: min(42vw, 360px) !important;
+  max-width: 42vw !important;
+  max-height: 42vw !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select,
+textarea {
+  min-height: 44px !important;
+  font-size: 16px !important;
+}
+
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"] {
+  min-height: 0 !important;
 }
 
 @media (max-width: 1023px) {
-  input,
-  select,
-  textarea {
-    min-height: 44px !important;
-    font-size: 16px !important;
-  }
-
-  input[type="checkbox"],
-  input[type="radio"],
-  input[type="file"] {
-    min-height: 0 !important;
-  }
-
   [class*="max-w-[380px]"],
   [class*="max-w-[400px]"] {
     max-width: min(100%, 420px) !important;
