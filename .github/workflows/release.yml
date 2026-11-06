@@ -98,15 +98,17 @@ jobs:
         run: |
           test -d .securo-frontend/dist
           mkdir -p .securo-config
-          cp src/setup.html .securo-config/config.html
-          cp -R src/scripts src/styles src/locales .securo-config/
+          if [[ -d src/config ]]; then
+            cp -R src/config/* .securo-config/
+          else
+            cp src/setup.html .securo-config/config.html
+            cp -R src/scripts src/styles src/locales .securo-config/
+          fi
           rm -rf src
           cp -R .securo-frontend/dist src
           mv src/index.html src/app.html
           mkdir -p src/config
-          cp .securo-config/config.html src/config/config.html
-          cp -R .securo-config/scripts .securo-config/styles .securo-config/locales src/config/
-          sed -i 's#styles/setup.css#config/styles/setup.css#; s#scripts/setup.js#config/scripts/setup.js#' src/config/config.html
+          cp -R .securo-config/* src/config/
           cp src-tauri/bridge/bootstrap.html src/index.html
           cp src-tauri/bridge/mobile-overrides.css src/mobile-overrides.css
           npx esbuild src-tauri/bridge/http-bridge.js --bundle --format=iife --platform=browser --outfile=src/securo-http-bridge.js
