@@ -43,11 +43,10 @@ fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + '\n', 'utf8'
 console.log('Invoking tauri icon generator...');
 execSync(`npx tauri icon "${MANIFEST_PATH}"`, { stdio: 'inherit', cwd: ROOT_DIR });
 
-// Ensure Android res files exist if Android project is initialized
-const resDir = path.resolve(ROOT_DIR, 'src-tauri/gen/android/app/src/main/res');
-if (fs.existsSync(resDir)) {
-  const valuesDir = path.join(resDir, 'values');
-  const anydpiDir = path.join(resDir, 'mipmap-anydpi-v26');
+// Helper to ensure adaptive icon XML files are present
+function ensureAdaptiveIconXmls(targetDir) {
+  const valuesDir = path.join(targetDir, 'values');
+  const anydpiDir = path.join(targetDir, 'mipmap-anydpi-v26');
 
   if (!fs.existsSync(valuesDir)) fs.mkdirSync(valuesDir, { recursive: true });
   fs.writeFileSync(
@@ -61,6 +60,22 @@ if (fs.existsSync(resDir)) {
     '<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n  <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n  <background android:drawable="@color/ic_launcher_background"/>\n</adaptive-icon>\n';
   fs.writeFileSync(path.join(anydpiDir, 'ic_launcher.xml'), adaptiveXml, 'utf8');
   fs.writeFileSync(path.join(anydpiDir, 'ic_launcher_round.xml'), adaptiveXml, 'utf8');
+}
+
+// Ensure pre-generated icons in src-tauri/icons/android have adaptive and round icon XMLs
+const iconsAndroidDir = path.resolve(ROOT_DIR, 'src-tauri/icons/android');
+if (fs.existsSync(iconsAndroidDir)) {
+  ensureAdaptiveIconXmls(iconsAndroidDir);
+}
+
+// If Android native project exists in src-tauri/gen/android, sync all assets into its res directory
+const resDir = path.resolve(ROOT_DIR, 'src-tauri/gen/android/app/src/main/res');
+if (fs.existsSync(resDir)) {
+  if (fs.existsSync(iconsAndroidDir)) {
+    fs.cpSync(iconsAndroidDir, resDir, { recursive: true, force: true });
+    console.log('Synchronized generated Android mipmaps from src-tauri/icons/android to gen/android res');
+  }
+  ensureAdaptiveIconXmls(resDir);
 }
 
 console.log('All icons generated successfully!');

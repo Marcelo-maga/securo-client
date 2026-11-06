@@ -59,8 +59,23 @@ if (fs.existsSync(manifestPath)) {
 const resDir = path.resolve('src-tauri/gen/android/app/src/main/res');
 const valuesDir = path.join(resDir, 'values');
 const anydpiDir = path.join(resDir, 'mipmap-anydpi-v26');
+const iconsAndroidDir = path.resolve('src-tauri/icons/android');
 
 if (fs.existsSync(resDir)) {
+  // Always synchronize application icons from pre-generated src-tauri/icons/android if available
+  if (fs.existsSync(iconsAndroidDir)) {
+    fs.cpSync(iconsAndroidDir, resDir, { recursive: true, force: true });
+    console.log('Synchronized application icons from src-tauri/icons/android to Android res.');
+  } else {
+    // If icons are missing, run generate-icons.mjs to generate and deploy them
+    const generateScript = path.resolve('scripts/generate-icons.mjs');
+    if (fs.existsSync(generateScript)) {
+      console.log('Pre-generated icons not found. Running generate-icons.mjs...');
+      const { execSync } = await import('node:child_process');
+      execSync(`node "${generateScript}"`, { stdio: 'inherit' });
+    }
+  }
+
   if (!fs.existsSync(valuesDir)) {
     fs.mkdirSync(valuesDir, { recursive: true });
   }
@@ -75,15 +90,6 @@ if (fs.existsSync(resDir)) {
   fs.writeFileSync(path.join(anydpiDir, 'ic_launcher.xml'), adaptiveXml, 'utf8');
   fs.writeFileSync(path.join(anydpiDir, 'ic_launcher_round.xml'), adaptiveXml, 'utf8');
   console.log('Configured adaptive icons (ic_launcher.xml and ic_launcher_round.xml).');
-
-  // Ensure mipmap icons are generated
-  const testMipmap = path.join(resDir, 'mipmap-xxxhdpi/ic_launcher_foreground.png');
-  const generateScript = path.resolve('scripts/generate-icons.mjs');
-  if (!fs.existsSync(testMipmap) && fs.existsSync(generateScript)) {
-    console.log('Android launcher assets missing. Running generate-icons.mjs...');
-    const { execSync } = await import('node:child_process');
-    execSync(`node "${generateScript}"`, { stdio: 'inherit' });
-  }
 }
 
 // 4. Update MainActivity.kt from bridge template
