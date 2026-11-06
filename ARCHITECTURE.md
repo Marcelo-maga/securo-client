@@ -6,14 +6,14 @@ This document provides a comprehensive technical overview of the architecture, d
 
 ## 1. Design Goals & Philosophy
 
-Securo is a modern, self-hosted personal finance platform. The primary goal of `securo-mobile` is to deliver an authentic, responsive native mobile client on top of Tauri v2 without requiring a completely separate mobile frontend codebase.
+Securo is a modern, self-hosted personal finance platform. The primary goal of `securo-mobile` is to deliver an authentic, responsive native client on top of Tauri v2 across both desktop (Windows, macOS, Linux) and mobile (Android, iOS) without requiring a completely separate frontend codebase.
 
 ### Core Objectives:
 1. **Zero Intermediate Infrastructure:** Direct, encrypted communication between the client device and the user's self-hosted server.
 2. **Homelab First:** First-class support for self-signed TLS certificates, LAN IP addresses, and private VPN hostnames (Tailscale, WireGuard).
-3. **Bypass WebView Network Restrictions:** Overcome mobile browser sandbox limitations (CORS, mixed content, certificate pinning) via a native Rust networking layer.
+3. **Bypass WebView Network Restrictions:** Overcome mobile and desktop browser sandbox limitations (CORS, mixed content, certificate pinning) via a native Rust networking layer.
 4. **Automated Frontend Synchronization:** A repeatable pipeline that ingests, patches, and bundles the official Securo web frontend without manual code divergence.
-5. **Native Look & Feel:** Edge-to-edge system insets, smooth navigation, and hardware-accelerated rendering.
+5. **Native Look & Feel:** Edge-to-edge system insets on mobile, native window chrome on desktop, and hardware-accelerated rendering.
 
 ---
 
@@ -21,10 +21,10 @@ Securo is a modern, self-hosted personal finance platform. The primary goal of `
 
 ```mermaid
 graph TD
-    subgraph Device["Android / Desktop Host"]
-        subgraph WebViewSandbox["WebView Runtime (Chromium / WebKit)"]
+    subgraph Device["Android / Windows Desktop Host"]
+        subgraph WebViewSandbox["WebView Runtime (Chromium / WebView2)"]
             UI["Official Securo UI (React + HashRouter)"]
-            CSS["Mobile CSS Overrides (Safe Area + Touch)"]
+            CSS["Mobile & Desktop CSS Overrides"]
             Bridge["securo-http-bridge.js (fetch / XHR Interceptor)"]
             SetupUI["Server Setup UI (/config/config.html)"]
 
@@ -55,9 +55,9 @@ graph TD
 ## 3. The Native HTTP Bridge
 
 ### The Problem: Mobile WebView Sandbox Limitations
-When running single-page applications (SPAs) inside Android WebViews:
+When running single-page applications (SPAs) inside WebViews:
 - **CORS Enforcements:** WebViews treat requests from local origins (`tauri://localhost` or `http://localhost`) to remote server endpoints as cross-origin requests. If the remote reverse proxy or server lacks explicit CORS headers, the WebView blocks the request.
-- **TLS & Certificate Rejection:** Android's internal WebView strictly prohibits network traffic to servers using self-signed SSL/TLS certificates or internal enterprise root CAs.
+- **TLS & Certificate Rejection:** Internal WebViews strictly prohibit network traffic to servers using self-signed SSL/TLS certificates or internal enterprise root CAs.
 - **Mixed Content Policies:** WebViews block plain HTTP traffic if the initial asset loader resolves over HTTPS.
 
 ### The Solution: Transparent Native Interception
@@ -111,7 +111,7 @@ flowchart LR
 ### 1. `prepare-frontend.mjs`
 - Performs a sparse clone (`--filter=blob:none --sparse`) of the official Securo repository, pulling only the `frontend/` directory to save bandwidth and disk space.
 - Replaces `BrowserRouter` with `HashRouter` inside `App.tsx`.
-  > *Why HashRouter?* Mobile WebViews load local assets via relative file protocols or virtual origins (`http://tauri.localhost`). Using HTML5 history API navigation results in 404 errors when deep-linking or refreshing the view. Hash routing (`/#/accounts`) guarantees route persistence.
+  > *Why HashRouter?* Mobile and desktop WebViews load local assets via relative file protocols or virtual origins (`http://tauri.localhost`). Using HTML5 history API navigation results in 404 errors when deep-linking or refreshing the view. Hash routing (`/#/accounts`) guarantees route persistence.
 - Adjusts Vite configuration (`base: "./"`) so all compiled JS/CSS script tags resolve relative to the WebView asset root.
 - Scans and patches runtime optional chaining (`.find(...)` -> `?.find(...)`) on transient financial state arrays to eliminate undefined reference errors during initial state hydration.
 
@@ -123,31 +123,15 @@ flowchart LR
 
 ---
 
-## 5. Android OS Native Integration
+## 5. OS Native Integrations
 
-### Edge-to-Edge Window & Safe Area Management (`MainActivity.kt` & `mobile-overrides.css`)
-Modern Android devices feature edge-to-edge screens with camera punch-holes, curved corners, and dynamic gesture navigation bars.
+### Android Edge-to-Edge & Safe Area Management
+Modern Android devices feature edge-to-edge screens with camera punch-holes, curved corners, and dynamic gesture navigation bars. Rather than applying native padding on Android's root view (which creates unstyled letterboxing), edge-to-edge rendering allows the WebView to span the entire display. The web layout then respects device cutouts dynamically through standard CSS safe-area insets (`env(safe-area-inset-top)`, `env(safe-area-inset-bottom)`) defined in `mobile-overrides.css`.
 
-`MainActivity.kt` initializes the native activity with edge-to-edge rendering enabled:
-```kotlin
-package com.securo.mobile
-
-import android.os.Bundle
-import androidx.activity.enableEdgeToEdge
-
-class MainActivity : TauriActivity() {
-  override fun onCreate(savedInstanceState: Bundle?) {
-    enableEdgeToEdge()
-    super.onCreate(savedInstanceState)
-  }
-}
-```
-Rather than applying native padding on Android's root view (which creates unstyled letterboxing and breaks viewport coordinates), edge-to-edge rendering allows the WebView to span the entire display. The web layout then respects device cutouts and system bars dynamically through standard CSS safe-area insets (`env(safe-area-inset-top)`, `env(safe-area-inset-bottom)`) defined in `mobile-overrides.css`.
-
-### Network Permissions (`AndroidManifest.xml`)
-The client dynamically ensures:
-- `android.permission.INTERNET`: Required for socket communication.
-- `android.permission.ACCESS_NETWORK_STATE`: Injected by `configure-android.mjs` to monitor network reachability across Wi-Fi, cellular, and VPN interfaces.
+### Windows Native Runtime & Window Management
+On Windows, Tauri utilizes the evergreen Microsoft Edge WebView2 runtime. In `lib.rs`, the application checks whether a valid `server_url` has already been saved in local storage:
+- If a server URL exists, the main dashboard window (`main`) is presented immediately.
+- If unconfigured, the window loads the dedicated server configuration screen (`config`), guiding the user through initial instance pairing before seamlessly switching to the financial dashboard.
 
 ---
 
@@ -172,11 +156,52 @@ When connecting to an instance in `commands.rs`:
 
 ---
 
-## 7. Performance & Build Optimizations
+## 7. Multi-Platform Artifact Packaging (`scripts/package-artifacts.mjs`)
 
-- **Cargo Profile Tuning:**
-  - Thin LTO (`lto = "thin"`) and 16 codegen units in release mode for optimal runtime binary size.
-  - Symbols stripped (`strip = true`) and panic set to abort (`panic = "abort"`).
-- **Compilation Caching in CI:**
-  - `rust-cache` persists compiled Rust dependencies and target artifacts between runs.
-  - Gradle caching via `gradle/actions/setup-gradle@v4` reuses daemon state and dependency jars.
+The packaging script automatically discovers and standardizes build outputs across platforms:
+
+| Platform | Format | Canonical Artifact Name Pattern |
+| :--- | :--- | :--- |
+| **Windows** | NSIS Setup EXE | `securo-{version}-windows-{arch}-setup.exe` |
+| **Windows** | WiX MSI | `securo-{version}-windows-{arch}.msi` |
+| **Android** | APK | `securo-{version}-{abi}-{buildType}.apk` |
+| **macOS** *(Future)* | DMG | `securo-{version}-macos-{arch}.dmg` |
+| **Linux** *(Future)* | DEB / AppImage | `securo-{version}-linux-{arch}.deb` / `.AppImage` |
+
+All outputs are staged in `artifacts/` alongside a consolidated `SHA256SUMS.txt` cryptographic manifest.
+
+---
+
+## 8. Release Pipeline Architecture (`.github/workflows/release.yml`)
+
+```mermaid
+flowchart TD
+    Trigger["Release Trigger\n(Tag v* or workflow_dispatch)"]
+
+    subgraph BuildJobs["Parallel Platform Build Matrix"]
+        WindowsJob["windows Job\n(windows-latest)\n- npm ci & setup-node\n- rust-cache & rust-toolchain\n- tauri build\n- NSIS .exe & MSI"]
+        AndroidJob["android Job\n(ubuntu-22.04)\n- Java 17 & Android SDK\n- Gradle cache\n- tauri android build\n- Signed APK"]
+        MacOSJob["macos Job (Future)\n(macos-latest)\n- Universal DMG"]
+        LinuxJob["linux Job (Future)\n(ubuntu-22.04)\n- DEB & AppImage"]
+    end
+
+    subgraph PublishJob["Consolidation & Distribution"]
+        UploadWin["Upload Artifacts\nsecuro-desktop-windows"]
+        UploadAnd["Upload Artifacts\nsecuro-android-*"]
+        DownloadAll["Download All Platform Artifacts\n(actions/download-artifact@v4)"]
+        ConsolidateSums["Consolidate SHA256SUMS.txt"]
+        GhRelease["softprops/action-gh-release@v2\n(Single Unified GitHub Release)"]
+    end
+
+    Trigger --> WindowsJob
+    Trigger --> AndroidJob
+
+    WindowsJob --> UploadWin
+    AndroidJob --> UploadAnd
+
+    UploadWin --> DownloadAll
+    UploadAnd --> DownloadAll
+
+    DownloadAll --> ConsolidateSums
+    ConsolidateSums --> GhRelease
+```

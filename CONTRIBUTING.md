@@ -16,7 +16,7 @@ We are committed to providing a welcoming, inclusive, and harassment-free enviro
 
 - 🐛 **Report Bugs:** Open an issue describing the bug, including steps to reproduce, device specifications, and log output.
 - 💡 **Suggest Features:** Share ideas for mobile optimizations, UI polish, or homelab enhancements.
-- 🌐 **Translations:** Improve or add language files in `src/locales/`.
+- 🌐 **Translations:** Improve or add language files in `src/config/locales/`.
 - 💻 **Code Contributions:** Implement bug fixes, enhance bridge capabilities, or streamline the CI/CD pipeline.
 
 ---

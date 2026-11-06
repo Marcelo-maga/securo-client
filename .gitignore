@@ -7,11 +7,32 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies and build outputs
 node_modules
-.securo-frontend
 dist
 dist-ssr
 *.local
+
+# Build artifacts & package outputs
+artifacts/
+*.apk
+*.aab
+*.msi
+*.exe
+*.dmg
+*.deb
+*.AppImage
+
+# Staging & sparse repository temporary folders
+.securo-frontend
+.securo-frontend-repository
+.securo-config
+
+# Rust & Tauri outputs
+target/
+src-tauri/target/
+src-tauri/gen/android/
+src-tauri/gen/schemas/
 
 # Editor directories and files
 .vscode/*

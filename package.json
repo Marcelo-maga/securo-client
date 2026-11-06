@@ -9,17 +9,22 @@
     "type": "git",
     "url": "git+https://github.com/securo-finance/securo-mobile.git"
   },
-  "license": "MIT OR Apache-2.0",
+  "license": "AGPL-3.0-only",
   "keywords": [
     "securo",
     "tauri",
     "android",
+    "windows",
+    "desktop",
     "personal-finance",
     "self-hosted",
     "homelab"
   ],
   "scripts": {
+    "test": "node --test tests/**/*.test.mjs",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri",
+    "desktop:build": "tauri build",
     "icons:generate": "node scripts/generate-icons.mjs",
     "frontend:prepare": "node scripts/prepare-frontend.mjs",
     "frontend:stage": "node scripts/stage-frontend.mjs",
