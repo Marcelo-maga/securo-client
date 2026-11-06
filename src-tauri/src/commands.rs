@@ -1,6 +1,6 @@
 use reqwest::Client;
 use serde::Serialize;
-use tauri::State;
+use tauri::{Manager, State};
 use tauri_plugin_store::StoreExt;
 
 use crate::errors::{AppError, ErrorCode};
@@ -101,4 +101,16 @@ pub fn clear_server_url(app: tauri::AppHandle) -> Result<(), AppError> {
     store
         .save()
         .map_err(|_| AppError::new(ErrorCode::ConfigSaveFailed))
+}
+
+#[tauri::command]
+pub fn activate_app_window(app: tauri::AppHandle) -> Result<(), String> {
+    let main_window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Main window is not available".to_string())?;
+    main_window.show().map_err(|error| error.to_string())?;
+    if let Some(config_window) = app.get_webview_window("config") {
+        config_window.close().map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
