@@ -4,7 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "frontend:prepare": "node scripts/prepare-frontend.mjs",
+    "frontend:stage": "node scripts/stage-frontend.mjs",
+    "android:configure": "node scripts/configure-android.mjs",
+    "artifacts:package": "node scripts/package-artifacts.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
