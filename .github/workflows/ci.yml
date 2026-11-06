@@ -45,3 +45,24 @@ jobs:
 
       - name: Verify HTTP Bridge bundling
         run: npx esbuild src-tauri/bridge/http-bridge.js --bundle --format=iife --platform=browser --outfile=/tmp/bridge-test.js
+
+      - name: Run JavaScript & Frontend Test Suite
+        run: npm test
+
+  rust-tests:
+    name: Rust Core Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Run Cargo Tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml

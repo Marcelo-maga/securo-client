@@ -6,17 +6,26 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
-      build_type:
-        description: "Build type (debug or release)"
+      platform:
+        description: "Target platform to build"
         required: true
-        default: "debug"
+        default: "all"
         type: choice
         options:
-          - "debug"
-          - "release"
-      target_arch:
-        description: "Target architecture"
+          - "all"
+          - "windows"
+          - "android"
+      build_type:
+        description: "Build type (release or debug)"
         required: true
+        default: "release"
+        type: choice
+        options:
+          - "release"
+          - "debug"
+      android_arch:
+        description: "Android target architecture (when building Android)"
+        required: false
         default: "aarch64"
         type: choice
         options:
@@ -43,8 +52,86 @@ env:
   GRADLE_OPTS: "-Dorg.gradle.parallel=true -Dorg.gradle.vfs.watch=false -Dorg.gradle.jvmargs=-Xmx3072m -XX:+UseG1GC"
 
 jobs:
+  # =========================================================================
+  # 1. WINDOWS DESKTOP BUILD (Native NSIS Setup EXE & WiX MSI Installers)
+  # =========================================================================
+  windows:
+    name: Windows Desktop (x64)
+    if: github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'windows'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install native client dependencies
+        run: npm ci
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust target and Cargo dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Cache Securo frontend dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~\AppData\Local\npm-cache
+          key: npm-frontend-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-frontend-${{ runner.os }}-
+
+      - name: Prepare and build Securo frontend
+        run: npm run frontend:prepare
+
+      - name: Stage frontend for Tauri
+        run: npm run frontend:stage
+
+      - name: Generate application icons
+        run: npm run icons:generate
+
+      - name: Build Windows Desktop (NSIS & MSI)
+        shell: pwsh
+        env:
+          INPUT_BUILD_TYPE: ${{ inputs.build_type }}
+        run: |
+          $BuildType = if ($env:INPUT_BUILD_TYPE) { $env:INPUT_BUILD_TYPE } else { "release" }
+          if ($BuildType -eq "debug") {
+            Write-Host "::notice ::Building Windows desktop application in debug mode..."
+            npm run tauri -- build --debug
+          } else {
+            Write-Host "::notice ::Building Windows desktop application in release mode (NSIS + MSI)..."
+            npm run tauri -- build
+          }
+
+      - name: Package Windows artifacts and calculate SHA-256 checksums
+        run: npm run artifacts:package
+
+      - name: Upload Windows build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: securo-desktop-windows
+          path: artifacts/*
+          retention-days: 14
+
+  # =========================================================================
+  # 2. ANDROID MOBILE BUILD (APK)
+  # =========================================================================
   android:
-    name: Android APK (${{ inputs.target_arch || 'aarch64' }})
+    name: Android APK (${{ inputs.android_arch || 'aarch64' }})
+    if: github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'android'
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout native client
@@ -54,7 +141,7 @@ jobs:
         id: target-map
         shell: bash
         run: |
-          ARCH="${{ inputs.target_arch || 'aarch64' }}"
+          ARCH="${{ inputs.android_arch || 'aarch64' }}"
           case "$ARCH" in
             armv7)
               echo "rust_target=armv7-linux-androideabi" >> $GITHUB_OUTPUT
@@ -122,6 +209,9 @@ jobs:
       - name: Initialize Android project
         run: npm run tauri -- android init
 
+      - name: Generate and configure application icons
+        run: npm run icons:generate
+
       - name: Configure Android permissions and insets
         run: npm run android:configure
 
@@ -135,7 +225,7 @@ jobs:
           TAURI_TARGET: ${{ steps.target-map.outputs.tauri_target }}
           INPUT_BUILD_TYPE: ${{ inputs.build_type }}
         run: |
-          BUILD_TYPE="${INPUT_BUILD_TYPE:-debug}"
+          BUILD_TYPE="${INPUT_BUILD_TYPE:-release}"
           if [[ "${BUILD_TYPE}" == "release" && -n "${KEYSTORE_BASE64}" ]]; then
             echo "::notice ::Building release APK and signing with configured keystore..."
             KEYSTORE_FILE="/tmp/release.keystore"
@@ -175,14 +265,121 @@ jobs:
           path: artifacts/*
           retention-days: 14
 
-      - name: Publish Release Assets
+  # =========================================================================
+  # 3. FUTURE DESKTOP PLATFORMS (macOS & Linux - Pre-configured architecture)
+  # To activate in the future:
+  # - Set `if: true` or extend `inputs.platform` options
+  # - For macOS: Configure Apple Developer Certificate & Notarization secrets
+  # - For Linux: AppImage and Debian packages will generate automatically
+  # =========================================================================
+  # macos:
+  #   name: macOS Desktop (Universal)
+  #   if: false # Activated when macOS releases are officially scheduled
+  #   runs-on: macos-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: ${{ env.NODE_VERSION }}
+  #         cache: npm
+  #     - run: npm ci
+  #     - uses: dtolnay/rust-toolchain@stable
+  #       with:
+  #         targets: x86_64-apple-darwin, aarch64-apple-darwin
+  #     - uses: swatinem/rust-cache@v2
+  #       with:
+  #         workspaces: "src-tauri -> target"
+  #     - uses: actions/cache@v4
+  #       with:
+  #         path: ~/.npm
+  #         key: npm-frontend-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+  #     - run: npm run frontend:prepare
+  #     - run: npm run frontend:stage
+  #     - run: npm run icons:generate
+  #     - name: Build macOS Universal DMG
+  #       run: npm run tauri -- build --target universal-apple-darwin
+  #     - run: npm run artifacts:package
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: securo-desktop-macos
+  #         path: artifacts/*
+  #         retention-days: 14
+
+  # linux:
+  #   name: Linux Desktop (DEB & AppImage)
+  #   if: false # Activated when Linux releases are officially scheduled
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Install Linux build dependencies
+  #       run: |
+  #         sudo apt-get update
+  #         sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: ${{ env.NODE_VERSION }}
+  #         cache: npm
+  #     - run: npm ci
+  #     - uses: dtolnay/rust-toolchain@stable
+  #       with:
+  #         targets: x86_64-unknown-linux-gnu
+  #     - uses: swatinem/rust-cache@v2
+  #       with:
+  #         workspaces: "src-tauri -> target"
+  #     - uses: actions/cache@v4
+  #       with:
+  #         path: ~/.npm
+  #         key: npm-frontend-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+  #     - run: npm run frontend:prepare
+  #     - run: npm run frontend:stage
+  #     - run: npm run icons:generate
+  #     - name: Build Linux Bundles (.deb and .AppImage)
+  #       run: npm run tauri -- build
+  #     - run: npm run artifacts:package
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: securo-desktop-linux
+  #         path: artifacts/*
+  #         retention-days: 14
+
+  # =========================================================================
+  # 4. CONSOLIDATE & PUBLISH GITHUB RELEASE
+  # =========================================================================
+  publish-release:
+    name: Consolidate & Publish GitHub Release
+    needs: [windows, android]
+    if: |
+      always() &&
+      (needs.windows.result == 'success' || needs.android.result == 'success') &&
+      (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: securo-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Consolidate SHA-256 checksums across all release assets
+        shell: bash
+        run: |
+          cd release-artifacts
+          rm -f SHA256SUMS.txt
+          sha256sum * > SHA256SUMS.txt
+          echo "=== Consolidated SHA256SUMS.txt ==="
+          cat SHA256SUMS.txt
+
+      - name: Publish Consolidated GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('manual-{0}', github.run_number) }}
-          files: artifacts/*
+          files: release-artifacts/*
           fail_on_unmatched_files: true
           generate_release_notes: true
           prerelease: ${{ startsWith(github.ref_name, 'v0.') || github.event_name == 'workflow_dispatch' }}
