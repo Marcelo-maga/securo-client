@@ -168,6 +168,8 @@ async function connect(event) {
 
   try {
     const serverUrl = await invoke("connect_server", {
+      serverUrl: rawUrl,
+      allowInvalidCerts: certificateCheckbox.checked,
       server_url: rawUrl,
       allow_invalid_certs: certificateCheckbox.checked,
     });
@@ -221,6 +223,8 @@ async function forceConnect() {
 
   try {
     const serverUrl = await invoke("save_server_url", {
+      serverUrl: rawUrl,
+      allowInvalidCerts: certificateCheckbox.checked,
       server_url: rawUrl,
       allow_invalid_certs: certificateCheckbox.checked,
     });
