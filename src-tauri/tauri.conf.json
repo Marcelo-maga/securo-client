@@ -15,7 +15,7 @@
         "width": 800,
         "height": 600,
         "url": "index.html",
-        "visible": true
+        "visible": false
       },
       {
         "label": "config",

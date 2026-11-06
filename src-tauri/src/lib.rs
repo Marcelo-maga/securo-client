@@ -12,13 +12,22 @@ pub fn run() {
         .setup(|app| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                let has_server = app
-                    .store("config.json")
-                    .ok()
-                    .and_then(|store| store.get("server_url"))
+                let store = app.store("config.json").ok();
+                let has_server = store
+                    .as_ref()
+                    .and_then(|s| s.get("server_url"))
                     .and_then(|value| value.as_str().map(str::to_owned))
                     .is_some();
-                let target = if has_server { "main" } else { "config" };
+                let auto_connect = store
+                    .as_ref()
+                    .and_then(|s| s.get("auto_connect"))
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false);
+                let target = if has_server && auto_connect {
+                    "main"
+                } else {
+                    "config"
+                };
                 if let Some(window) = app.get_webview_window(target) {
                     window.show()?;
                 }
@@ -34,7 +43,8 @@ pub fn run() {
             commands::connect_server,
             commands::save_server_url,
             commands::clear_server_url,
-            commands::activate_app_window
+            commands::activate_app_window,
+            commands::set_auto_connect
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|error| eprintln!("error while running tauri application: {error}"));

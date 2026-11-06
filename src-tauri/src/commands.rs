@@ -1,6 +1,6 @@
-use std::time::Duration;
 use reqwest::Client;
 use serde::Serialize;
+use std::time::Duration;
 use tauri::Manager;
 use tauri_plugin_store::StoreExt;
 
@@ -9,11 +9,13 @@ use crate::errors::{AppError, ErrorCode};
 const STORE_FILE: &str = "config.json";
 const SERVER_URL_KEY: &str = "server_url";
 const ALLOW_INVALID_CERTS_KEY: &str = "allow_invalid_certs";
+const AUTO_CONNECT_KEY: &str = "auto_connect";
 
 #[derive(Serialize)]
 pub struct ConnectionSettings {
-    server_url: Option<String>,
-    allow_invalid_certs: bool,
+    pub server_url: Option<String>,
+    pub allow_invalid_certs: bool,
+    pub auto_connect: bool,
 }
 
 pub fn normalize_url(value: &str) -> Result<String, AppError> {
@@ -68,11 +70,11 @@ fn build_http_client(allow_invalid_certs: bool) -> Result<Client, AppError> {
 }
 
 fn detailed_reqwest_error(endpoint: &str, err: &reqwest::Error) -> String {
-    let mut out = format!("Tentativa em: {endpoint}\nErro: {err}\n");
+    let mut out = format!("Attempt at: {endpoint}\nError: {err}\n");
     let mut source = std::error::Error::source(err);
     let mut depth = 1;
     while let Some(src) = source {
-        out.push_str(&format!("  Causa {depth}: {src}\n"));
+        out.push_str(&format!("  Cause {depth}: {src}\n"));
         source = src.source();
         depth += 1;
     }
@@ -84,18 +86,26 @@ fn save_config(
     app: &tauri::AppHandle,
     server_url: &str,
     allow_invalid_certs: bool,
+    auto_connect: Option<bool>,
 ) -> Result<(), AppError> {
     let store = app
         .store(STORE_FILE)
         .map_err(|_| AppError::new(ErrorCode::ConfigOpenFailed))?;
     store.set(SERVER_URL_KEY, server_url);
     store.set(ALLOW_INVALID_CERTS_KEY, allow_invalid_certs);
+    if let Some(auto_conn) = auto_connect {
+        store.set(AUTO_CONNECT_KEY, auto_conn);
+    }
     store
         .save()
         .map_err(|_| AppError::new(ErrorCode::ConfigSaveFailed))
 }
 
-async fn probe_endpoint(client: &Client, url: &str, is_fallback_root: bool) -> Result<bool, String> {
+async fn probe_endpoint(
+    client: &Client,
+    url: &str,
+    is_fallback_root: bool,
+) -> Result<bool, String> {
     match client.get(url).send().await {
         Ok(resp) => {
             let status = resp.status().as_u16();
@@ -109,8 +119,10 @@ async fn probe_endpoint(client: &Client, url: &str, is_fallback_root: bool) -> R
                 Ok(true)
             } else {
                 let body = resp.text().await.unwrap_or_default();
-                let snippet = if body.len() > 300 { &body[..300] } else { &body };
-                Err(format!("Tentativa em: {url}\nResposta HTTP {status}: {snippet}\n"))
+                let snippet: String = body.chars().take(300).collect();
+                Err(format!(
+                    "Attempt at: {url}\nHTTP response {status}: {snippet}\n"
+                ))
             }
         }
         Err(err) => {
@@ -134,11 +146,28 @@ pub fn get_connection_settings(app: tauri::AppHandle) -> Result<ConnectionSettin
         .get(ALLOW_INVALID_CERTS_KEY)
         .and_then(|value| value.as_bool())
         .unwrap_or(false);
+    let auto_connect = store
+        .get(AUTO_CONNECT_KEY)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
 
     Ok(ConnectionSettings {
         server_url,
         allow_invalid_certs,
+        auto_connect,
     })
+}
+
+#[tauri::command]
+pub fn set_auto_connect(app: tauri::AppHandle, auto_connect: bool) -> Result<bool, AppError> {
+    let store = app
+        .store(STORE_FILE)
+        .map_err(|_| AppError::new(ErrorCode::ConfigOpenFailed))?;
+    store.set(AUTO_CONNECT_KEY, auto_connect);
+    store
+        .save()
+        .map_err(|_| AppError::new(ErrorCode::ConfigSaveFailed))?;
+    Ok(auto_connect)
 }
 
 #[tauri::command]
@@ -146,9 +175,10 @@ pub fn save_server_url(
     app: tauri::AppHandle,
     server_url: String,
     allow_invalid_certs: bool,
+    auto_connect: Option<bool>,
 ) -> Result<String, AppError> {
     let normalized_url = normalize_url(&server_url)?;
-    save_config(&app, &normalized_url, allow_invalid_certs)?;
+    save_config(&app, &normalized_url, allow_invalid_certs, auto_connect)?;
     Ok(normalized_url)
 }
 
@@ -157,6 +187,7 @@ pub async fn connect_server(
     app: tauri::AppHandle,
     server_url: String,
     allow_invalid_certs: bool,
+    auto_connect: Option<bool>,
 ) -> Result<String, AppError> {
     let normalized_url = normalize_url(&server_url)?;
     let client = build_http_client(allow_invalid_certs)?;
@@ -189,7 +220,7 @@ pub async fn connect_server(
         ));
     }
 
-    save_config(&app, &normalized_url, allow_invalid_certs)?;
+    save_config(&app, &normalized_url, allow_invalid_certs, auto_connect)?;
     Ok(normalized_url)
 }
 
@@ -200,6 +231,7 @@ pub fn clear_server_url(app: tauri::AppHandle) -> Result<(), AppError> {
         .map_err(|_| AppError::new(ErrorCode::ConfigOpenFailed))?;
     store.delete(SERVER_URL_KEY);
     store.delete(ALLOW_INVALID_CERTS_KEY);
+    store.delete(AUTO_CONNECT_KEY);
     store
         .save()
         .map_err(|_| AppError::new(ErrorCode::ConfigSaveFailed))
@@ -212,6 +244,9 @@ pub fn activate_app_window(app: tauri::AppHandle) -> Result<(), String> {
         let main_window = app
             .get_webview_window("main")
             .ok_or_else(|| "Main window is not available".to_string())?;
+        let _ = main_window.eval(
+            "if (window.location.pathname.includes('config')) { window.location.replace('../app.html#/'); } else if (!window.location.pathname.includes('app.html')) { window.location.replace('app.html#/'); }"
+        );
         main_window.show().map_err(|error| error.to_string())?;
         if let Some(config_window) = app.get_webview_window("config") {
             config_window.close().map_err(|error| error.to_string())?;
@@ -236,19 +271,34 @@ mod tests {
 
     #[test]
     fn test_normalize_url_preserves_scheme_and_port() {
-        assert_eq!(normalize_url("http://localhost:8080").unwrap(), "http://localhost:8080");
+        assert_eq!(
+            normalize_url("http://localhost:8080").unwrap(),
+            "http://localhost:8080"
+        );
     }
 
     #[test]
     fn test_normalize_url_strips_trailing_slash() {
-        assert_eq!(normalize_url("https://example.com/").unwrap(), "https://example.com");
+        assert_eq!(
+            normalize_url("https://example.com/").unwrap(),
+            "https://example.com"
+        );
     }
 
     #[test]
     fn test_normalize_url_strips_api_suffix() {
-        assert_eq!(normalize_url("https://example.com/api").unwrap(), "https://example.com");
-        assert_eq!(normalize_url("https://example.com/api/").unwrap(), "https://example.com");
-        assert_eq!(normalize_url("https://example.com/sub/api/").unwrap(), "https://example.com/sub");
+        assert_eq!(
+            normalize_url("https://example.com/api").unwrap(),
+            "https://example.com"
+        );
+        assert_eq!(
+            normalize_url("https://example.com/api/").unwrap(),
+            "https://example.com"
+        );
+        assert_eq!(
+            normalize_url("https://example.com/sub/api/").unwrap(),
+            "https://example.com/sub"
+        );
     }
 
     #[test]
@@ -256,5 +306,145 @@ mod tests {
         assert!(normalize_url("").is_err());
         assert!(normalize_url("   ").is_err());
         assert!(normalize_url("https://user:pass@example.com").is_err());
+    }
+
+    // --- NEW RIGOROUS QA TEST SUITE (Ensuring zero regressions and strict contracts) ---
+
+    #[test]
+    fn test_normalize_url_ip_addresses_and_custom_ports() {
+        assert_eq!(
+            normalize_url("192.168.1.100").unwrap(),
+            "https://192.168.1.100"
+        );
+        assert_eq!(
+            normalize_url("http://192.168.1.50:8000").unwrap(),
+            "http://192.168.1.50:8000"
+        );
+        assert_eq!(
+            normalize_url("http://127.0.0.1:3000/api").unwrap(),
+            "http://127.0.0.1:3000"
+        );
+        assert_eq!(
+            normalize_url("10.0.0.5:8443/api/").unwrap(),
+            "https://10.0.0.5:8443"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_tailscale_and_homelab_domains() {
+        assert_eq!(
+            normalize_url("securo.tailnet-xyz.ts.net").unwrap(),
+            "https://securo.tailnet-xyz.ts.net"
+        );
+        assert_eq!(
+            normalize_url("http://vault.internal.corp:8443/api/").unwrap(),
+            "http://vault.internal.corp:8443"
+        );
+        assert_eq!(
+            normalize_url("sub-domain.homelab.local").unwrap(),
+            "https://sub-domain.homelab.local"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_nested_paths_with_api() {
+        assert_eq!(
+            normalize_url("https://my-domain.com/finance/api").unwrap(),
+            "https://my-domain.com/finance"
+        );
+        assert_eq!(
+            normalize_url("https://my-domain.com/finance/api/").unwrap(),
+            "https://my-domain.com/finance"
+        );
+        assert_eq!(
+            normalize_url("https://my-domain.com/instances/prod/sub/api").unwrap(),
+            "https://my-domain.com/instances/prod/sub"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_strips_surrounding_whitespace() {
+        assert_eq!(
+            normalize_url("   https://example.com/api   ").unwrap(),
+            "https://example.com"
+        );
+        assert_eq!(
+            normalize_url("\t\nhttp://localhost:3000\n\r").unwrap(),
+            "http://localhost:3000"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_rejects_fragments_with_invalid_credentials_error() {
+        let fragment_err = normalize_url("https://example.com/#dashboard").unwrap_err();
+        assert_eq!(fragment_err.code, ErrorCode::InvalidUrlCredentials);
+
+        let api_fragment_err = normalize_url("http://localhost:8080/api#info").unwrap_err();
+        assert_eq!(api_fragment_err.code, ErrorCode::InvalidUrlCredentials);
+    }
+
+    #[test]
+    fn test_normalize_url_rejects_userinfo_and_passwords() {
+        let user_err = normalize_url("https://admin:secret@example.com").unwrap_err();
+        assert_eq!(user_err.code, ErrorCode::InvalidUrlCredentials);
+
+        let pass_err = normalize_url("http://guest:@localhost").unwrap_err();
+        assert_eq!(pass_err.code, ErrorCode::InvalidUrlCredentials);
+    }
+
+    #[test]
+    fn test_normalize_url_rejects_malformed_urls_with_invalid_url_error() {
+        let err1 = normalize_url("http://").unwrap_err();
+        assert_eq!(err1.code, ErrorCode::InvalidUrl);
+
+        let err2 = normalize_url("https://").unwrap_err();
+        assert_eq!(err2.code, ErrorCode::InvalidUrl);
+
+        let err3 = normalize_url("   ").unwrap_err();
+        assert_eq!(err3.code, ErrorCode::InvalidUrl);
+
+        let err4 = normalize_url("").unwrap_err();
+        assert_eq!(err4.code, ErrorCode::InvalidUrl);
+    }
+
+    #[test]
+    fn test_build_http_client_creation() {
+        assert!(build_http_client(false).is_ok());
+        assert!(build_http_client(true).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_probe_endpoint_logic_with_local_mock() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Spawn a lightweight one-shot HTTP mock responder
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = socket.read(&mut buf).await;
+                let response = "HTTP/1.1 200 OK\r\nContent-Length: 15\r\n\r\n{\"status\":\"ok\"}";
+                let _ = socket.write_all(response.as_bytes()).await;
+            }
+        });
+
+        let client = build_http_client(false).unwrap();
+        let test_url = format!("http://127.0.0.1:{port}/api/health");
+        let result = probe_endpoint(&client, &test_url, false).await;
+        assert_eq!(result, Ok(true));
+    }
+
+    #[tokio::test]
+    async fn test_probe_endpoint_fails_on_unreachable_port() {
+        let client = build_http_client(false).unwrap();
+        // A port that is virtually guaranteed not to be listening
+        let unreachable_url = "http://127.0.0.1:59999/api/health";
+        let result = probe_endpoint(&client, unreachable_url, false).await;
+        assert!(result.is_err());
+        let log = result.unwrap_err();
+        assert!(log.contains("Attempt at: http://127.0.0.1:59999/api/health"));
     }
 }
