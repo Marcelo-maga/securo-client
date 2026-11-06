@@ -75,7 +75,12 @@
         invoke("get_connection_settings")
           .then((settings) => {
             const serverUrl = settings?.server_url || settings?.serverUrl;
-            window.location.replace(serverUrl ? "app.html#/" : "config/config.html");
+            const autoConnect = Boolean(settings?.auto_connect ?? settings?.autoConnect);
+            if (serverUrl && autoConnect) {
+              window.location.replace("app.html#/");
+            } else {
+              openConfig();
+            }
           })
           .catch(openConfig);
       }

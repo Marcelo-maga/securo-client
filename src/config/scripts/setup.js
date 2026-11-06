@@ -10,20 +10,29 @@ const LOCALES = {
     urlLabel: "Endereço do servidor",
     urlPlaceholder: "https://meu-securo.com",
     certLabel: "Permitir certificado autoassinado",
+    autoConnectLabel: "Entrar automaticamente ao abrir o app",
     connect: "Conectar",
+    connectConfigured: "Conectar com a URL configurada",
     connecting: "Conectando...",
     forceConnect: "Continuar mesmo assim",
     useAnother: "Trocar servidor",
     loading: "Carregando...",
     checking: "Testando conexão...",
     success: "Conectado com sucesso.",
+    serverConfigured: "Servidor configurado e pronto para conectar.",
+    errorDetailsTitle: "Detalhes do erro",
+    copy: "Copiar",
+    copied: "Copiado!",
+    certSelfSignedEnabled: "(Certificado autoassinado ativado)",
+    tauriUnavailable: "A API do Tauri não está disponível.",
+    connectionError: "Erro de conexão",
     errors: {
       INVALID_URL: "Informe uma URL válida, incluindo http:// ou https://.",
       INVALID_URL_SCHEME: "A URL deve usar http:// ou https:// e conter um host.",
       INVALID_URL_CREDENTIALS: "A URL não pode conter credenciais ou fragmento.",
       CONFIG_OPEN_FAILED: "Não foi possível abrir a configuração local.",
       HTTP_CLIENT_BUILD_FAILED: "Não foi possível preparar a conexão.",
-      SERVER_UNREACHABLE: "Não foi possível alcançar o servidor.",
+      SERVER_UNREACHABLE: "Não foi possível alcançar o servidor. Verifique a URL e tente novamente.",
       SERVER_HTTP_ERROR: "O servidor respondeu com HTTP {status}.",
       CONFIG_SAVE_FAILED: "Não foi possível salvar a configuração local.",
       UNKNOWN: "Não foi possível conectar ao servidor."
@@ -35,20 +44,29 @@ const LOCALES = {
     urlLabel: "Server address",
     urlPlaceholder: "https://my-securo.com",
     certLabel: "Allow self-signed certificate",
+    autoConnectLabel: "Connect automatically on launch",
     connect: "Connect",
+    connectConfigured: "Connect with configured URL",
     connecting: "Connecting...",
     forceConnect: "Continue anyway",
     useAnother: "Change server",
     loading: "Loading...",
     checking: "Testing connection...",
     success: "Connected successfully.",
+    serverConfigured: "Server configured and ready to connect.",
+    errorDetailsTitle: "Error details",
+    copy: "Copy",
+    copied: "Copied!",
+    certSelfSignedEnabled: "(Self-signed certificate enabled)",
+    tauriUnavailable: "Tauri API is not available.",
+    connectionError: "Connection error",
     errors: {
       INVALID_URL: "Enter a valid URL, including http:// or https://.",
       INVALID_URL_SCHEME: "The URL must use http:// or https:// and include a host.",
       INVALID_URL_CREDENTIALS: "The URL cannot contain credentials or a fragment.",
       CONFIG_OPEN_FAILED: "We could not open the local configuration.",
       HTTP_CLIENT_BUILD_FAILED: "We could not prepare the connection.",
-      SERVER_UNREACHABLE: "We could not reach this server.",
+      SERVER_UNREACHABLE: "We could not reach this server. Check the URL and try again.",
       SERVER_HTTP_ERROR: "The server returned HTTP {status}.",
       CONFIG_SAVE_FAILED: "We could not save the local configuration.",
       UNKNOWN: "We could not connect to this server."
@@ -59,9 +77,13 @@ const LOCALES = {
 const form = document.querySelector("#server-form");
 const input = document.querySelector("#server-url");
 const certificateCheckbox = document.querySelector("#allow-invalid-certs");
+const autoConnectCheckbox = document.querySelector("#auto-connect");
 const button = document.querySelector("#connect-button");
 const buttonLabel = document.querySelector("#connect-label");
 const loadingIcon = document.querySelector("#loading-icon");
+const connectConfiguredButton = document.querySelector("#connect-configured-button");
+const connectConfiguredLabel = document.querySelector("#connect-configured-label");
+const loadingConfiguredIcon = document.querySelector("#loading-configured-icon");
 const forceConnectButton = document.querySelector("#force-connect-button");
 const forceConnectLabel = document.querySelector("#force-connect-label");
 const errorContainer = document.querySelector("#error-container");
@@ -95,6 +117,9 @@ function renderCopy() {
   if (forceConnectLabel && copy.forceConnect) {
     forceConnectLabel.textContent = copy.forceConnect;
   }
+  if (connectConfiguredLabel && copy.connectConfigured) {
+    connectConfiguredLabel.textContent = copy.connectConfigured;
+  }
   document.title = "Securo";
 }
 
@@ -104,7 +129,7 @@ function formatMessage(template, values = {}) {
 
 function errorMessage(error) {
   const code = error?.code || "UNKNOWN";
-  const template = copy.errors?.[code] || copy.errors?.UNKNOWN || "Erro de conexão";
+  const template = copy.errors?.[code] || copy.errors?.UNKNOWN || copy.connectionError || "Connection error";
   return formatMessage(template, error);
 }
 
@@ -115,22 +140,31 @@ function setStatus(message = "", kind = "") {
 
 function setBusy(isBusy) {
   button.disabled = isBusy;
+  if (connectConfiguredButton) connectConfiguredButton.disabled = isBusy;
   input.disabled = isBusy;
   certificateCheckbox.disabled = isBusy;
+  if (autoConnectCheckbox) autoConnectCheckbox.disabled = isBusy;
   if (forceConnectButton) forceConnectButton.disabled = isBusy;
+  if (clearButton) clearButton.disabled = isBusy;
   buttonLabel.textContent = isBusy ? copy.connecting : copy.connect;
   loadingIcon.classList.toggle("hidden", !isBusy);
+  if (loadingConfiguredIcon) loadingConfiguredIcon.classList.toggle("hidden", !isBusy);
 }
 
-function setConnected(serverUrl) {
+function setConnected(serverUrl, autoConnect = false) {
   input.value = serverUrl;
   input.disabled = true;
   certificateCheckbox.disabled = true;
+  if (autoConnectCheckbox) {
+    autoConnectCheckbox.checked = Boolean(autoConnect);
+    autoConnectCheckbox.disabled = false;
+  }
   button.classList.add("hidden");
+  if (connectConfiguredButton) connectConfiguredButton.classList.remove("hidden");
   if (forceConnectButton) forceConnectButton.classList.add("hidden");
   if (errorContainer) errorContainer.classList.add("hidden");
   clearButton.classList.remove("hidden");
-  setStatus(copy.success, "success");
+  setStatus(copy.serverConfigured || copy.success, "success");
 }
 
 async function navigateToApp() {
@@ -154,6 +188,22 @@ function showErrorDetails(error) {
   }
 }
 
+async function connectConfigured() {
+  setBusy(true);
+  setStatus(copy.connecting || copy.loading);
+  if (invoke && autoConnectCheckbox) {
+    try {
+      await invoke("set_auto_connect", {
+        autoConnect: autoConnectCheckbox.checked,
+        auto_connect: autoConnectCheckbox.checked,
+      });
+    } catch {
+      // Ignore if non-fatal
+    }
+  }
+  await navigateToApp();
+}
+
 async function connect(event) {
   event.preventDefault();
   const rawUrl = input.value.trim();
@@ -169,19 +219,22 @@ async function connect(event) {
   if (errorContainer) errorContainer.classList.add("hidden");
 
   if (!invoke) {
-    setStatus("Tauri API is not available.", "error");
+    setStatus(copy.tauriUnavailable || "Tauri API is not available.", "error");
     setBusy(false);
     return;
   }
 
   try {
+    const isAutoConnect = Boolean(autoConnectCheckbox?.checked);
     const serverUrl = await invoke("connect_server", {
       serverUrl: rawUrl,
       allowInvalidCerts: certificateCheckbox.checked,
+      autoConnect: isAutoConnect,
       server_url: rawUrl,
       allow_invalid_certs: certificateCheckbox.checked,
+      auto_connect: isAutoConnect,
     });
-    setConnected(serverUrl);
+    setConnected(serverUrl, isAutoConnect);
     await navigateToApp();
   } catch (error) {
     const errMsg = errorMessage(error);
@@ -194,12 +247,8 @@ async function connect(event) {
       detailsStr.includes("handshake");
     if (isCertError && !certificateCheckbox.checked) {
       certificateCheckbox.checked = true;
-      setStatus(
-        isPortuguese
-          ? `${errMsg} (Certificado autoassinado ativado)`
-          : `${errMsg} (Self-signed certificate enabled)`,
-        "error"
-      );
+      const certNotice = copy.certSelfSignedEnabled ? ` ${copy.certSelfSignedEnabled}` : "";
+      setStatus(`${errMsg}${certNotice}`, "error");
     } else {
       setStatus(errMsg, "error");
     }
@@ -220,19 +269,22 @@ async function forceConnect() {
   if (errorContainer) errorContainer.classList.add("hidden");
 
   if (!invoke) {
-    setStatus("Tauri API is not available.", "error");
+    setStatus(copy.tauriUnavailable || "Tauri API is not available.", "error");
     setBusy(false);
     return;
   }
 
   try {
+    const isAutoConnect = Boolean(autoConnectCheckbox?.checked);
     const serverUrl = await invoke("save_server_url", {
       serverUrl: rawUrl,
       allowInvalidCerts: certificateCheckbox.checked,
+      autoConnect: isAutoConnect,
       server_url: rawUrl,
       allow_invalid_certs: certificateCheckbox.checked,
+      auto_connect: isAutoConnect,
     });
-    setConnected(serverUrl);
+    setConnected(serverUrl, isAutoConnect);
     await navigateToApp();
   } catch (error) {
     setStatus(errorMessage(error), "error");
@@ -246,9 +298,12 @@ async function clearServer() {
   try {
     await invoke("clear_server_url");
     setBusy(false);
+    input.value = "";
     input.disabled = false;
     certificateCheckbox.disabled = false;
+    if (autoConnectCheckbox) autoConnectCheckbox.disabled = false;
     button.classList.remove("hidden");
+    if (connectConfiguredButton) connectConfiguredButton.classList.add("hidden");
     if (forceConnectButton) forceConnectButton.classList.add("hidden");
     if (errorContainer) errorContainer.classList.add("hidden");
     clearButton.classList.add("hidden");
@@ -259,6 +314,18 @@ async function clearServer() {
   }
 }
 
+async function handleAutoConnectChange() {
+  if (!invoke || !autoConnectCheckbox) return;
+  try {
+    await invoke("set_auto_connect", {
+      autoConnect: autoConnectCheckbox.checked,
+      auto_connect: autoConnectCheckbox.checked,
+    });
+  } catch (error) {
+    console.error("Failed to update auto_connect preference:", error);
+  }
+}
+
 async function initialize() {
   renderCopy();
   form.addEventListener("submit", connect);
@@ -266,6 +333,8 @@ async function initialize() {
     if (forceConnectButton) forceConnectButton.classList.add("hidden");
     if (errorContainer) errorContainer.classList.add("hidden");
   });
+  if (connectConfiguredButton) connectConfiguredButton.addEventListener("click", connectConfigured);
+  if (autoConnectCheckbox) autoConnectCheckbox.addEventListener("change", handleAutoConnectChange);
   if (forceConnectButton) forceConnectButton.addEventListener("click", forceConnect);
   copyErrorButton?.addEventListener("click", async () => {
     const text = errorDetails?.textContent || "";
@@ -280,9 +349,10 @@ async function initialize() {
       document.execCommand("copy");
       document.body.removeChild(textarea);
     }
-    const orig = copyErrorButton.textContent;
-    copyErrorButton.textContent = isPortuguese ? "Copiado!" : "Copied!";
-    setTimeout(() => { copyErrorButton.textContent = orig; }, 2000);
+    copyErrorButton.textContent = copy.copied || "Copied!";
+    setTimeout(() => {
+      copyErrorButton.textContent = copy.copy || "Copy";
+    }, 2000);
   });
   clearButton.addEventListener("click", clearServer);
 
@@ -300,9 +370,11 @@ async function initialize() {
     const settings = await invoke("get_connection_settings");
     const serverUrl = settings?.server_url || settings?.serverUrl;
     const allowInvalidCerts = Boolean(settings?.allow_invalid_certs || settings?.allowInvalidCerts);
+    const autoConnect = Boolean(settings?.auto_connect ?? settings?.autoConnect);
     certificateCheckbox.checked = allowInvalidCerts;
+    if (autoConnectCheckbox) autoConnectCheckbox.checked = autoConnect;
     if (serverUrl) {
-      setConnected(serverUrl);
+      setConnected(serverUrl, autoConnect);
     } else {
       setStatus();
     }

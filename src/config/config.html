@@ -39,20 +39,35 @@
           />
         </div>
 
-        <label for="allow-invalid-certs" class="checkbox-row">
-          <input id="allow-invalid-certs" type="checkbox" />
-          <span data-i18n="certLabel">Permitir certificado autoassinado</span>
-        </label>
+        <div class="options-group">
+          <label for="allow-invalid-certs" class="checkbox-row">
+            <input id="allow-invalid-certs" type="checkbox" />
+            <span data-i18n="certLabel">Permitir certificado autoassinado</span>
+          </label>
+
+          <label for="auto-connect" class="checkbox-row">
+            <input id="auto-connect" type="checkbox" />
+            <span data-i18n="autoConnectLabel">Entrar automaticamente ao abrir o app</span>
+          </label>
+        </div>
 
         <p id="status" class="status" role="status" aria-live="polite"></p>
 
         <div id="error-container" class="error-container hidden">
           <div class="error-header">
-            <span class="error-title">Detalhes do erro</span>
-            <button id="copy-error-button" type="button" class="btn-copy">Copiar</button>
+            <span class="error-title" data-i18n="errorDetailsTitle">Detalhes do erro</span>
+            <button id="copy-error-button" type="button" class="btn-copy" data-i18n="copy">Copiar</button>
           </div>
           <pre id="error-details" class="error-details"></pre>
         </div>
+
+        <button id="connect-configured-button" type="button" class="btn btn-primary hidden">
+          <span id="connect-configured-label" data-i18n="connectConfigured">Conectar com a URL configurada</span>
+          <svg id="loading-configured-icon" class="spinner hidden" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle opacity=".25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" />
+            <path opacity=".9" fill="currentColor" d="M21 12a9 9 0 0 1-9 9v-3a6 6 0 0 0 6-6h3Z" />
+          </svg>
+        </button>
 
         <button id="connect-button" type="submit" class="btn btn-primary">
           <span id="connect-label" data-i18n="connect">Conectar</span>
@@ -66,7 +81,7 @@
           <span id="force-connect-label" data-i18n="forceConnect">Continuar mesmo assim</span>
         </button>
 
-        <button id="clear-button" class="btn btn-danger hidden" type="button" data-i18n="useAnother">
+        <button id="clear-button" class="btn btn-secondary hidden" type="button" data-i18n="useAnother">
           Trocar servidor
         </button>
       </form>
