@@ -100,17 +100,6 @@ jobs:
         with:
           targets: ${{ steps.target-map.outputs.rust_target }}
 
-      - name: Set up sccache (Rust & C/C++ compiler cache)
-        uses: mozilla/sccache-action@v0.0.8
-        with:
-          version: "v0.8.2"
-
-      - name: Configure sccache environment
-        shell: bash
-        run: |
-          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
-
       - name: Rust Cache
         uses: swatinem/rust-cache@v2
         with:
@@ -197,8 +186,3 @@ jobs:
           fail_on_unmatched_files: true
           generate_release_notes: true
           prerelease: ${{ startsWith(github.ref_name, 'v0.') || github.event_name == 'workflow_dispatch' }}
-
-      - name: Display sccache compilation statistics
-        shell: bash
-        if: always()
-        run: sccache --show-stats || true

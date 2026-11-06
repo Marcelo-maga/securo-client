@@ -178,6 +178,5 @@ When connecting to an instance in `commands.rs`:
   - Thin LTO (`lto = "thin"`) and 16 codegen units in release mode for optimal runtime binary size.
   - Symbols stripped (`strip = true`) and panic set to abort (`panic = "abort"`).
 - **Compilation Caching in CI:**
-  - `sccache` caches NDK C/C++ object compilation across GitHub Actions jobs.
-  - `rust-cache` persists compiled Rust dependencies between runs.
+  - `rust-cache` persists compiled Rust dependencies and target artifacts between runs.
   - Gradle caching via `gradle/actions/setup-gradle@v4` reuses daemon state and dependency jars.

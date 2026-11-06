@@ -44,7 +44,7 @@ Running self-hosted applications on mobile browsers or progressive web apps (PWA
 - 📱 **Native Android Edge-to-Edge:** Optimized via Android `enableEdgeToEdge()` and CSS safe-area insets, adapting dynamically to device camera notches, status bars, and navigation gesture bars.
 - 🔄 **Intelligent Server Discovery:** Validates remote instances across multiple health endpoints (`/api/health`, `/api/info`, `/health`, and root fallback) with detailed diagnostic error logs on connection failures.
 - 📦 **Automated Frontend Pipeline:** Built-in toolchain to fetch, adapt (converting to `HashRouter`, patching runtime optional-chaining, applying mobile CSS), and stage the official Securo frontend seamlessly.
-- 🚀 **High-Speed Multi-Arch CI/CD:** GitHub Actions workflows featuring `sccache` + `rust-cache` compilation acceleration, building optimized APKs for `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
+- 🚀 **High-Speed Multi-Arch CI/CD:** GitHub Actions workflows featuring `rust-cache` compilation acceleration, building optimized APKs for `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
 
 ---
 
@@ -225,7 +225,7 @@ This repository includes two production-grade GitHub Actions workflows:
 ### 2. Automated Release Pipeline (`.github/workflows/release.yml`)
 - Triggered by publishing a git tag (`v*`) or through manual dispatch (`workflow_dispatch`).
 - **Matrix Build:** Builds optimized APKs for target architectures (`aarch64`, `armv7`, `x86_64`).
-- **Compilation Caching:** Utilizes `sccache` + `rust-cache` (up to 80% build time reduction) and Gradle wrapper caching.
+- **Compilation Caching:** Utilizes `rust-cache` (up to 80% build time reduction) and Gradle wrapper caching.
 - **Production Keystore Signing:** If repository secrets are configured, APKs are signed for release with `apksigner`.
 - **Automatic Debug Fallback:** If secrets are absent, the workflow automatically signs artifacts with the standard Android debug keystore, ensuring pull requests and forks produce immediately testable APKs.
 - **Cryptographic Checksums:** Generates a unified `SHA256SUMS.txt` accompanying all published assets.
