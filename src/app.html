@@ -108,8 +108,9 @@
       const invoke = window.__TAURI__?.core?.invoke;
       if (invoke) {
         invoke("get_connection_settings").then((settings) => {
-          if (settings.server_url) {
-            document.querySelector("#server-url").textContent = settings.server_url;
+          const serverUrl = settings?.server_url || settings?.serverUrl;
+          if (serverUrl) {
+            document.querySelector("#server-url").textContent = serverUrl;
           } else {
             window.location.replace("config/config.html");
           }

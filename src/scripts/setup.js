@@ -298,9 +298,11 @@ async function initialize() {
   try {
     setStatus(copy.loading);
     const settings = await invoke("get_connection_settings");
-    certificateCheckbox.checked = Boolean(settings.allow_invalid_certs);
-    if (settings.server_url) {
-      setConnected(settings.server_url);
+    const serverUrl = settings?.server_url || settings?.serverUrl;
+    const allowInvalidCerts = Boolean(settings?.allow_invalid_certs || settings?.allowInvalidCerts);
+    certificateCheckbox.checked = allowInvalidCerts;
+    if (serverUrl) {
+      setConnected(serverUrl);
     } else {
       setStatus();
     }

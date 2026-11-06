@@ -37,7 +37,7 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
   }
 
   function getDangerOptions(settings) {
-    if (!settings?.allow_invalid_certs) return {};
+    if (!settings?.allow_invalid_certs && !settings?.allowInvalidCerts) return {};
     return {
       danger: {
         acceptInvalidCerts: true,
@@ -50,7 +50,8 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
   window.fetch = async (input, init) => {
     if (!getRelativeApiUrl(input)) return browserFetch(input, init);
     const settings = await getSettings();
-    const targetUrl = settings.server_url && getApiUrl(input, settings.server_url);
+    const serverUrl = settings?.server_url || settings?.serverUrl;
+    const targetUrl = serverUrl && getApiUrl(input, serverUrl);
     if (!targetUrl) return browserFetch(input, init);
     return nativeFetch(targetUrl, {
       ...init,
@@ -148,7 +149,8 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
 
     async _sendThroughTauri(body) {
       const settings = await getSettings();
-      const targetUrl = settings.server_url && getApiUrl(this._url, settings.server_url);
+      const serverUrl = settings?.server_url || settings?.serverUrl;
+      const targetUrl = serverUrl && getApiUrl(this._url, serverUrl);
       if (!targetUrl) return this._fail(new Error("Nenhum servidor Securo está configurado."));
 
       this._controller = new AbortController();

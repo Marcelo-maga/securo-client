@@ -64,7 +64,10 @@
         openConfig();
       } else {
         invoke("get_connection_settings")
-          .then((settings) => window.location.replace(settings.server_url ? "app.html" : "config/config.html"))
+          .then((settings) => {
+            const serverUrl = settings?.server_url || settings?.serverUrl;
+            window.location.replace(serverUrl ? "app.html" : "config/config.html");
+          })
           .catch(openConfig);
       }
     </script>
