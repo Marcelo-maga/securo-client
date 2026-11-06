@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "securo-mobile",
+  "productName": "Securo",
   "version": "0.1.0",
   "identifier": "com.securo.mobile",
   "build": {
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "securo-mobile",
+        "title": "Securo",
         "width": 800,
         "height": 600,
         "url": "index.html",

@@ -9,6 +9,7 @@ pub enum ErrorCode {
     ConfigOpenFailed,
     HttpClientBuildFailed,
     ServerUnreachable,
+    #[allow(dead_code)]
     ServerHttpError,
     ConfigSaveFailed,
 }
@@ -39,6 +40,7 @@ impl AppError {
         }
     }
 
+    #[allow(dead_code)]
     pub fn server_http_error(status: u16) -> Self {
         Self {
             code: ErrorCode::ServerHttpError,

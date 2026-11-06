@@ -1,10 +1,26 @@
 {
   "name": "securo-mobile",
-  "private": true,
   "version": "0.1.0",
+  "description": "Native mobile and desktop client for self-hosted Securo personal finance",
+  "private": true,
   "type": "module",
+  "homepage": "https://github.com/securo-finance/securo-mobile",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/securo-finance/securo-mobile.git"
+  },
+  "license": "MIT OR Apache-2.0",
+  "keywords": [
+    "securo",
+    "tauri",
+    "android",
+    "personal-finance",
+    "self-hosted",
+    "homelab"
+  ],
   "scripts": {
     "tauri": "tauri",
+    "icons:generate": "node scripts/generate-icons.mjs",
     "frontend:prepare": "node scripts/prepare-frontend.mjs",
     "frontend:stage": "node scripts/stage-frontend.mjs",
     "android:configure": "node scripts/configure-android.mjs",

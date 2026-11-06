@@ -23,17 +23,6 @@ fs.mkdirSync(BACKUP_CONFIG_DIR, { recursive: true });
 const srcConfigDir = path.join(SRC_DIR, 'config');
 if (fs.existsSync(srcConfigDir)) {
   fs.cpSync(srcConfigDir, BACKUP_CONFIG_DIR, { recursive: true });
-} else {
-  const setupHtml = path.join(SRC_DIR, 'setup.html');
-  if (fs.existsSync(setupHtml)) {
-    fs.copyFileSync(setupHtml, path.join(BACKUP_CONFIG_DIR, 'config.html'));
-  }
-  for (const folder of ['scripts', 'styles', 'locales']) {
-    const srcFolder = path.join(SRC_DIR, folder);
-    if (fs.existsSync(srcFolder)) {
-      fs.cpSync(srcFolder, path.join(BACKUP_CONFIG_DIR, folder), { recursive: true });
-    }
-  }
 }
 
 // 2. Clear src and populate with frontend dist
@@ -52,9 +41,14 @@ const destConfigDir = path.join(SRC_DIR, 'config');
 fs.mkdirSync(destConfigDir, { recursive: true });
 fs.cpSync(BACKUP_CONFIG_DIR, destConfigDir, { recursive: true });
 
-// 5. Copy bootstrap and mobile overrides
+// 5. Copy bootstrap, mobile overrides and favicon
 fs.copyFileSync(path.join(BRIDGE_DIR, 'bootstrap.html'), path.join(SRC_DIR, 'index.html'));
 fs.copyFileSync(path.join(BRIDGE_DIR, 'mobile-overrides.css'), path.join(SRC_DIR, 'mobile-overrides.css'));
+
+const faviconSrc = path.resolve('assets/favicon.ico');
+if (fs.existsSync(faviconSrc)) {
+  fs.copyFileSync(faviconSrc, path.join(SRC_DIR, 'favicon.ico'));
+}
 
 // 6. Bundle http-bridge.js using esbuild
 const bridgeJsOut = path.join(SRC_DIR, 'securo-http-bridge.js');

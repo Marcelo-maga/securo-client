@@ -10,29 +10,19 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
   function getSettings() {
     const invoke = getInvoke();
     if (!invoke) return Promise.resolve(null);
-    settingsPromise ??= invoke("get_connection_settings");
-    return settingsPromise;
+    return (settingsPromise ??= invoke("get_connection_settings"));
   }
 
-  function isApiRequest(input, serverUrl) {
+  function isApiRequest(input) {
     if (!input) return false;
     const urlStr = typeof input === "string" ? input : input.url || "";
-    if (urlStr.startsWith("/api/") || urlStr === "/api" || urlStr.startsWith("api/")) {
-      return true;
-    }
+    if (urlStr.startsWith("/api") || urlStr.startsWith("api/")) return true;
     try {
-      const parsed = new URL(urlStr, window.location.href);
-      if (parsed.pathname === "/api" || parsed.pathname.startsWith("/api/")) {
-        return true;
-      }
-      if (serverUrl) {
-        const srv = new URL(serverUrl);
-        if (parsed.origin === srv.origin && (parsed.pathname === "/api" || parsed.pathname.startsWith("/api/"))) {
-          return true;
-        }
-      }
-    } catch {}
-    return false;
+      const { pathname } = new URL(urlStr, window.location.href);
+      return pathname === "/api" || pathname.startsWith("/api/");
+    } catch {
+      return false;
+    }
   }
 
   function getApiUrl(input, serverUrl) {
@@ -64,7 +54,7 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
   window.fetch = async (input, init) => {
     const settings = await getSettings();
     const serverUrl = settings?.server_url || settings?.serverUrl;
-    if (!isApiRequest(input, serverUrl)) return browserFetch(input, init);
+    if (!isApiRequest(input)) return browserFetch(input, init);
     const targetUrl = serverUrl && getApiUrl(input, serverUrl);
     if (!targetUrl) return browserFetch(input, init);
     return nativeFetch(targetUrl, {
@@ -74,7 +64,7 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
   };
 
   const BrowserXHR = window.XMLHttpRequest;
-  const forwardedEvents = ["abort", "error", "load", "loadend", "loadstart", "progress", "timeout"];
+  const forwardedEvents = ["abort", "error", "load", "loadend", "loadstart", "progress", "timeout", "readystatechange"];
 
   class SecuroXMLHttpRequest extends EventTarget {
     static UNSENT = 0;
@@ -117,12 +107,6 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
           }
         });
       });
-      this._browserXhr.addEventListener("readystatechange", (event) => {
-        if (!this._apiRequest) {
-          this.dispatchEvent(new Event(event.type));
-          this.onreadystatechange?.call(this, event);
-        }
-      });
     }
 
     get readyState() { return this._apiRequest ? this._state : this._browserXhr.readyState; }
@@ -141,13 +125,12 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
       this._apiRequest = typeof url === "string" && (url.startsWith("/api") || url.startsWith("api/"));
       if (!this._apiRequest) return this._browserXhr.open(method, url, async, user, password);
       this._state = 1;
-      this._emitReadyStateChange();
+      this._emit("readystatechange");
     }
 
     setRequestHeader(name, value) {
-      if (this._apiRequest) this._headers.set(name, value);
-      else {
-        this._headers.set(name, value);
+      this._headers.set(name, value);
+      if (!this._apiRequest) {
         try { this._browserXhr.setRequestHeader(name, value); } catch {}
       }
     }
@@ -159,11 +142,9 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
     getAllResponseHeaders() {
       if (!this._apiRequest) return this._browserXhr.getAllResponseHeaders();
       let str = "";
-      if (this._responseHeaders?.forEach) {
-        this._responseHeaders.forEach((val, key) => {
-          str += `${key}: ${val}\r\n`;
-        });
-      }
+      this._responseHeaders?.forEach?.((val, key) => {
+        str += `${key}: ${val}\r\n`;
+      });
       return str;
     }
 
@@ -182,12 +163,6 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
         this._apiRequest = false;
         return this._browserXhr.send(body);
       }
-    }
-
-    _emitReadyStateChange() {
-      const event = new Event("readystatechange");
-      this.dispatchEvent(event);
-      this.onreadystatechange?.call(this, event);
     }
 
     async _sendThroughTauri(body, settings, serverUrl) {
@@ -211,7 +186,8 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
         this._statusText = response.statusText;
         this._responseHeaders = response.headers;
         this._state = 2;
-        this._emitReadyStateChange();
+        this._emit("readystatechange");
+
         const buffer = await response.arrayBuffer();
         const text = new TextDecoder().decode(buffer);
         this._responseText = text;
@@ -229,7 +205,7 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
           this._response = text;
         }
         this._state = 4;
-        this._emitReadyStateChange();
+        this._emit("readystatechange");
         this._emit("load");
         this._emit("loadend");
       } catch (error) {
@@ -241,7 +217,7 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
 
     _fail(error) {
       this._state = 4;
-      this._emitReadyStateChange();
+      this._emit("readystatechange");
       this._emit(error?.name === "AbortError" ? "abort" : "error");
       this._emit("loadend");
     }

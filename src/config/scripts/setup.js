@@ -146,6 +146,14 @@ async function navigateToApp() {
   window.location.replace(appTarget);
 }
 
+function showErrorDetails(error) {
+  const fullErr = error?.details || (typeof error === "string" ? error : JSON.stringify(error, null, 2));
+  if (fullErr && errorDetails && errorContainer) {
+    errorDetails.textContent = fullErr;
+    errorContainer.classList.remove("hidden");
+  }
+}
+
 async function connect(event) {
   event.preventDefault();
   const rawUrl = input.value.trim();
@@ -196,11 +204,7 @@ async function connect(event) {
       setStatus(errMsg, "error");
     }
 
-    const fullErr = error?.details || (typeof error === "string" ? error : JSON.stringify(error, null, 2));
-    if (fullErr && errorDetails && errorContainer) {
-      errorDetails.textContent = fullErr;
-      errorContainer.classList.remove("hidden");
-    }
+    showErrorDetails(error);
 
     if (forceConnectButton) forceConnectButton.classList.remove("hidden");
     setBusy(false);
@@ -232,11 +236,7 @@ async function forceConnect() {
     await navigateToApp();
   } catch (error) {
     setStatus(errorMessage(error), "error");
-    const fullErr = error?.details || (typeof error === "string" ? error : JSON.stringify(error, null, 2));
-    if (fullErr && errorDetails && errorContainer) {
-      errorDetails.textContent = fullErr;
-      errorContainer.classList.remove("hidden");
-    }
+    showErrorDetails(error);
     setBusy(false);
   }
 }

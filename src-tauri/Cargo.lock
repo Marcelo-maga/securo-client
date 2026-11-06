@@ -2929,7 +2929,6 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-http",
  "tauri-plugin-store",
- "tokio",
 ]
 
 [[package]]

@@ -1,6 +1,5 @@
 mod commands;
 mod errors;
-mod state;
 
 use tauri::Manager;
 use tauri_plugin_store::StoreExt;
@@ -10,7 +9,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .manage(state::AppState::default())
         .setup(|app| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {

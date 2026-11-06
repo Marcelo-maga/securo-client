@@ -1,0 +1,70 @@
+/* Keep the remote frontend readable inside a phone-sized WebView and respect safe area */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+}
+
+/* Ensure document body does not introduce redundant status-bar padding or break sticky headers */
+body {
+  padding-top: 0 !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Mobile top header: seamlessly extend behind status bar while preserving 56px (h-14) content area */
+header[class*="sticky top-0"],
+header.sticky.top-0,
+header[class*="sticky"][class*="top-0"] {
+  padding-top: env(safe-area-inset-top, 0px) !important;
+  height: calc(3.5rem + env(safe-area-inset-top, 0px)) !important;
+  min-height: calc(3.5rem + env(safe-area-inset-top, 0px)) !important;
+  box-sizing: border-box !important;
+}
+
+/* Mobile sidebar header safe-area top when drawer is open */
+@media (max-width: 1023px) {
+  aside[class*="fixed"][class*="inset-y-0"] > div:first-child,
+  aside.fixed.inset-y-0 > div:first-child {
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    height: calc(4rem + env(safe-area-inset-top, 0px)) !important;
+    min-height: calc(4rem + env(safe-area-inset-top, 0px)) !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Slide-over panels (e.g. transaction drill-down) header */
+  [class*="fixed top-0 right-0"] > div:first-child {
+    padding-top: max(env(safe-area-inset-top, 0px), 1rem) !important;
+  }
+}
+
+/* Mobile bulk selection action bar safe-area bottom */
+[class*="fixed bottom-0"] {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+}
+
+svg[width="640"][height="640"] {
+  width: min(42vw, 360px) !important;
+  height: min(42vw, 360px) !important;
+  max-width: 42vw !important;
+  max-height: 42vw !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select,
+textarea {
+  height: 52px !important;
+  min-height: 52px !important;
+  font-size: 16px !important;
+}
+
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"] {
+  min-height: 0 !important;
+}
+
+@media (max-width: 1023px) {
+  [class*="max-w-[380px]"],
+  [class*="max-w-[400px]"] {
+    max-width: min(100%, 420px) !important;
+  }
+}

@@ -47,20 +47,12 @@ console.log(`Found ${apks.length} APK(s). Packaging and hashing...`);
 
 const checksumLines = [];
 
-for (const apkPath of apks) {
-  // Infer ABI and build type from path or filename
-  // Path usually: .../outputs/apk/<abi>/<buildType>/app-<abi>-<buildType>.apk
-  const parts = apkPath.split(path.sep);
-  const fileName = path.basename(apkPath);
-  
-  let abi = 'arm64-v8a';
-  if (apkPath.includes('armeabi-v7a') || fileName.includes('armeabi-v7a')) abi = 'armeabi-v7a';
-  else if (apkPath.includes('x86_64') || fileName.includes('x86_64')) abi = 'x86_64';
-  else if (apkPath.includes('x86') || fileName.includes('x86')) abi = 'x86';
-  else if (apkPath.includes('universal') || fileName.includes('universal')) abi = 'universal';
+const KNOWN_ABIS = ['armeabi-v7a', 'x86_64', 'x86', 'universal', 'arm64-v8a'];
 
-  let buildType = 'debug';
-  if (apkPath.includes('release') || fileName.includes('release')) buildType = 'release';
+for (const apkPath of apks) {
+  const fileName = path.basename(apkPath);
+  const abi = KNOWN_ABIS.find((candidate) => apkPath.includes(candidate)) || 'arm64-v8a';
+  const buildType = apkPath.includes('release') ? 'release' : 'debug';
 
   const newFileName = `securo-${releaseVersion}-${abi}-${buildType}.apk`;
   const destPath = path.join(OUT_DIR, newFileName);
