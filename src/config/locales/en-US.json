@@ -1,25 +1,16 @@
 {
-  "brand": "Securo / finance under your control",
-  "eyebrow": "Set up in under a minute",
-  "titleLineOne": "Your money.",
-  "titleLineTwo": "Your way.",
-  "description": "Enter the address of your Securo server. We will test the connection before saving the setting.",
-  "securityNote": "The address is saved only on this device.",
-  "step": "Initial setup",
-  "heading": "Where is your server?",
-  "private": "On this device",
+  "title": "Server Configuration",
+  "subtitle": "Enter the address of your Securo server.",
   "urlLabel": "Server address",
   "urlPlaceholder": "https://my-securo.com",
-  "certLabel": "Allow a self-signed certificate",
-  "certHint": "Enable only when you control the server or trust the network.",
-  "connect": "Test and continue",
-  "connecting": "Testing server...",
-  "useAnother": "Use another server",
-  "localStorage": "Stored locally on this device",
-  "loading": "Loading configuration...",
-  "checking": "Checking server health...",
-  "success": "Server verified and connected.",
-  "forceConnect": "Save and continue anyway",
+  "certLabel": "Allow self-signed certificate",
+  "connect": "Connect",
+  "connecting": "Connecting...",
+  "forceConnect": "Continue anyway",
+  "useAnother": "Change server",
+  "loading": "Loading...",
+  "checking": "Testing connection...",
+  "success": "Connected successfully.",
   "errors": {
     "INVALID_URL": "Enter a valid URL, including http:// or https://.",
     "INVALID_URL_SCHEME": "The URL must use http:// or https:// and include a host.",
@@ -29,6 +20,6 @@
     "SERVER_UNREACHABLE": "We could not reach this server. Check the URL and try again.",
     "SERVER_HTTP_ERROR": "The server returned HTTP {status}.",
     "CONFIG_SAVE_FAILED": "We could not save the local configuration.",
-    "UNKNOWN": "We could not connect to this server. Check the URL and try again."
+    "UNKNOWN": "We could not connect to this server."
   }
 }

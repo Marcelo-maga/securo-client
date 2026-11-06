@@ -5,27 +5,18 @@ document.documentElement.lang = locale;
 
 const LOCALES = {
   "pt-BR": {
-    brand: "Securo / finanças sob seu controle",
-    eyebrow: "Configure em menos de um minuto",
-    titleLineOne: "Seu dinheiro.",
-    titleLineTwo: "Do seu jeito.",
-    description: "Informe o endereço do seu servidor Securo. Vamos testar a conexão antes de guardar a configuração.",
-    securityNote: "O endereço fica salvo somente neste dispositivo.",
-    step: "Configuração inicial",
-    heading: "Onde está seu servidor?",
-    private: "No dispositivo",
+    title: "Configuração do Servidor",
+    subtitle: "Informe o endereço da API do Securo.",
     urlLabel: "Endereço do servidor",
     urlPlaceholder: "https://meu-securo.com",
     certLabel: "Permitir certificado autoassinado",
-    certHint: "Ative somente se você controla o servidor ou está em uma rede confiável.",
-    connect: "Testar e continuar",
-    connecting: "Testando servidor...",
-    forceConnect: "Salvar e continuar mesmo assim",
-    useAnother: "Usar outro servidor",
-    localStorage: "Armazenado localmente neste dispositivo",
-    loading: "Carregando configuração...",
-    checking: "Consultando a saúde do servidor...",
-    success: "Servidor verificado e conectado.",
+    connect: "Conectar",
+    connecting: "Conectando...",
+    forceConnect: "Continuar mesmo assim",
+    useAnother: "Trocar servidor",
+    loading: "Carregando...",
+    checking: "Testando conexão...",
+    success: "Conectado com sucesso.",
     errors: {
       INVALID_URL: "Informe uma URL válida, incluindo http:// ou https://.",
       INVALID_URL_SCHEME: "A URL deve usar http:// ou https:// e conter um host.",
@@ -35,31 +26,22 @@ const LOCALES = {
       SERVER_UNREACHABLE: "Não foi possível alcançar o servidor. Verifique a URL e tente novamente.",
       SERVER_HTTP_ERROR: "O servidor respondeu com HTTP {status}.",
       CONFIG_SAVE_FAILED: "Não foi possível salvar a configuração local.",
-      UNKNOWN: "Não foi possível conectar ao servidor. Verifique a URL e tente novamente."
+      UNKNOWN: "Não foi possível conectar ao servidor."
     }
   },
   "en-US": {
-    brand: "Securo / finance under your control",
-    eyebrow: "Set up in under a minute",
-    titleLineOne: "Your money.",
-    titleLineTwo: "Your way.",
-    description: "Enter the address of your Securo server. We will test the connection before saving the setting.",
-    securityNote: "The address is saved only on this device.",
-    step: "Initial setup",
-    heading: "Where is your server?",
-    private: "On this device",
+    title: "Server Configuration",
+    subtitle: "Enter the address of your Securo server.",
     urlLabel: "Server address",
     urlPlaceholder: "https://my-securo.com",
-    certLabel: "Allow a self-signed certificate",
-    certHint: "Enable only when you control the server or trust the network.",
-    connect: "Test and continue",
-    connecting: "Testing server...",
-    forceConnect: "Save and continue anyway",
-    useAnother: "Use another server",
-    localStorage: "Stored locally on this device",
-    loading: "Loading configuration...",
-    checking: "Checking server health...",
-    success: "Server verified and connected.",
+    certLabel: "Allow self-signed certificate",
+    connect: "Connect",
+    connecting: "Connecting...",
+    forceConnect: "Continue anyway",
+    useAnother: "Change server",
+    loading: "Loading...",
+    checking: "Testing connection...",
+    success: "Connected successfully.",
     errors: {
       INVALID_URL: "Enter a valid URL, including http:// or https://.",
       INVALID_URL_SCHEME: "The URL must use http:// or https:// and include a host.",
@@ -69,7 +51,7 @@ const LOCALES = {
       SERVER_UNREACHABLE: "We could not reach this server. Check the URL and try again.",
       SERVER_HTTP_ERROR: "The server returned HTTP {status}.",
       CONFIG_SAVE_FAILED: "We could not save the local configuration.",
-      UNKNOWN: "We could not connect to this server. Check the URL and try again."
+      UNKNOWN: "We could not connect to this server."
     }
   }
 };
@@ -79,7 +61,6 @@ const input = document.querySelector("#server-url");
 const certificateCheckbox = document.querySelector("#allow-invalid-certs");
 const button = document.querySelector("#connect-button");
 const buttonLabel = document.querySelector("#connect-label");
-const buttonIcon = document.querySelector("#button-icon");
 const loadingIcon = document.querySelector("#loading-icon");
 const forceConnectButton = document.querySelector("#force-connect-button");
 const forceConnectLabel = document.querySelector("#force-connect-label");
@@ -95,7 +76,7 @@ async function loadCopy() {
       copy = { ...copy, ...data, errors: { ...copy.errors, ...(data.errors || {}) } };
     }
   } catch {
-    // Falls back to embedded copy gracefully
+    // Keep embedded copy
   }
   return copy;
 }
@@ -111,7 +92,7 @@ function renderCopy() {
   if (forceConnectLabel && copy.forceConnect) {
     forceConnectLabel.textContent = copy.forceConnect;
   }
-  document.title = `Securo | ${copy.heading || "Setup"}`;
+  document.title = "Securo";
 }
 
 function formatMessage(template, values = {}) {
@@ -139,7 +120,6 @@ function setBusy(isBusy) {
   certificateCheckbox.disabled = isBusy;
   if (forceConnectButton) forceConnectButton.disabled = isBusy;
   buttonLabel.textContent = isBusy ? copy.connecting : copy.connect;
-  buttonIcon.classList.toggle("hidden", isBusy);
   loadingIcon.classList.toggle("hidden", !isBusy);
 }
 
@@ -147,7 +127,7 @@ function setConnected(serverUrl) {
   input.value = serverUrl;
   input.disabled = true;
   certificateCheckbox.disabled = true;
-  button.hidden = true;
+  button.classList.add("hidden");
   if (forceConnectButton) forceConnectButton.classList.add("hidden");
   clearButton.classList.remove("hidden");
   setStatus(copy.success, "success");
@@ -205,8 +185,8 @@ async function connect(event) {
       certificateCheckbox.checked = true;
       setStatus(
         isPortuguese
-          ? `${errMsg} Dica: ativamos a opção de certificado autoassinado. Tente conectar novamente.`
-          : `${errMsg} Tip: self-signed certificate option enabled. Try connecting again.`,
+          ? `${errMsg} Dica: certificado autoassinado ativado.`
+          : `${errMsg} Tip: self-signed certificate option enabled.`,
         "error"
       );
     } else {
@@ -250,7 +230,7 @@ async function clearServer() {
     setBusy(false);
     input.disabled = false;
     certificateCheckbox.disabled = false;
-    button.hidden = false;
+    button.classList.remove("hidden");
     if (forceConnectButton) forceConnectButton.classList.add("hidden");
     clearButton.classList.add("hidden");
     setStatus();
