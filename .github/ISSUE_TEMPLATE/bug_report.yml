@@ -1,0 +1,82 @@
+name: Bug Report
+description: Create a report to help us improve Securo Mobile
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please provide as much detail as possible.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: When attempting to connect to my self-hosted server...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Which platform did you experience the issue on?
+      options:
+        - Android (arm64-v8a)
+        - Android (armeabi-v7a)
+        - Android (x86_64)
+        - Windows Desktop (x64)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App Version
+      description: App version (e.g. v0.1.0 or commit SHA)
+      placeholder: v0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: device-os
+    attributes:
+      label: OS / Device Model
+      description: e.g. Android 14 / Pixel 7, Windows 11 23H2
+      placeholder: Android 14
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this behavior?
+      value: |
+        1. Open the app
+        2. Enter server URL '...'
+        3. Tap 'Connect'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Logs or Probe Details
+      description: |
+        Copy the error details or logs from the app's error dialog (tap 'Copy' button in the setup error dialog).
+        Please sanitize any private tokens or real homelab passwords before pasting!
+      render: shell
+    validations:
+      required: false

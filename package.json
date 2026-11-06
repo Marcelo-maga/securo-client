@@ -4,10 +4,10 @@
   "description": "Native mobile and desktop client for self-hosted Securo personal finance",
   "private": true,
   "type": "module",
-  "homepage": "https://github.com/securo-finance/securo-mobile",
+  "homepage": "https://github.com/Marcelo-maga/securo-mobile",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/securo-finance/securo-mobile.git"
+    "url": "git+https://github.com/Marcelo-maga/securo-mobile.git"
   },
   "license": "AGPL-3.0-only",
   "keywords": [
@@ -33,7 +33,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
-    "esbuild": "^0.27.7"
+    "esbuild": "^0.28.2"
   },
   "dependencies": {
     "@tauri-apps/plugin-http": "^2"

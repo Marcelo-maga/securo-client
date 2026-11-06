@@ -2,8 +2,8 @@
 
 <div align="center">
 
-[![CI Pipeline](https://github.com/securo-finance/securo-mobile/actions/workflows/ci.yml/badge.svg)](https://github.com/securo-finance/securo-mobile/actions/workflows/ci.yml)
-[![Release Pipeline](https://github.com/securo-finance/securo-mobile/actions/workflows/release.yml/badge.svg)](https://github.com/securo-finance/securo-mobile/actions/workflows/release.yml)
+[![CI Pipeline](https://github.com/Marcelo-maga/securo-mobile/actions/workflows/ci.yml/badge.svg)](https://github.com/Marcelo-maga/securo-mobile/actions/workflows/ci.yml)
+[![Release Pipeline](https://github.com/Marcelo-maga/securo-mobile/actions/workflows/release.yml/badge.svg)](https://github.com/Marcelo-maga/securo-mobile/actions/workflows/release.yml)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2.0-blue.svg?logo=tauri&logoColor=white)](https://tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Desktop-green.svg?logo=android&logoColor=white)](https://android.com)
@@ -41,7 +41,7 @@ Running self-hosted web apps on mobile browsers or PWAs often creates friction: 
 
 ### Pre-built APKs (Android)
 
-1. Head to the **[Latest Release](https://github.com/securo-finance/securo-mobile/releases/latest)**.
+1. Head to the **[Latest Release](https://github.com/Marcelo-maga/securo-mobile/releases/latest)**.
 2. Download the APK for your device architecture:
    - **`arm64-v8a`** (Recommended — modern phones and tablets)
    - **`armeabi-v7a`** (Older 32-bit Android devices)
@@ -98,7 +98,7 @@ flowchart TD
 
 ```bash
 # 1. Clone & install dependencies
-git clone https://github.com/securo-finance/securo-mobile.git
+git clone https://github.com/Marcelo-maga/securo-mobile.git
 cd securo-mobile
 npm install
 
