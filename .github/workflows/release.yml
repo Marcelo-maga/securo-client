@@ -82,6 +82,26 @@ jobs:
           printf '\nimport "./mobile-overrides.css";\n' >> src/main.tsx
           sed -i 's/BrowserRouter/HashRouter/g' src/App.tsx
           sed -i 's/define: {/base: ".\/",\n    define: {/' vite.config.ts
+          python3 -c "
+          import os, re
+          root_dir = 'src'
+          for dirpath, _, filenames in os.walk(root_dir):
+              for f in filenames:
+                  if f.endswith('.tsx') or f.endswith('.ts'):
+                      path = os.path.join(dirpath, f)
+                      with open(path, 'r', encoding='utf-8') as file:
+                          content = file.read()
+                      new_content = re.sub(r'(\.[a-zA-Z0-9_]+)\.find\(', r'\1?.find(', content)
+                      new_content = re.sub(r'([a-zA-Z0-9_]+)\.current\.find\(', r'\1.current?.find(', new_content)
+                      new_content = re.sub(r'([a-zA-Z0-9_]+)\.baseline\.find\(', r'\1.baseline?.find(', new_content)
+                      new_content = re.sub(r'([a-zA-Z0-9_]+)\.days\.find\(', r'\1.days?.find(', new_content)
+                      new_content = re.sub(r'([a-zA-Z0-9_]+)\.installments\.find\(', r'\1.installments?.find(', new_content)
+                      new_content = re.sub(r'([a-zA-Z0-9_]+)\.assets\.find\(', r'\1.assets?.find(', new_content)
+                      new_content = re.sub(r'([a-zA-Z0-9_]+)\.actions\.find\(', r'\1.actions?.find(', new_content)
+                      if new_content != content:
+                          with open(path, 'w', encoding='utf-8') as file:
+                              file.write(new_content)
+          "
           if [[ -f package-lock.json ]]; then
             npm ci
           elif [[ -f pnpm-lock.yaml ]]; then
@@ -114,17 +134,43 @@ jobs:
           cp src-tauri/bridge/bootstrap.html src/index.html
           cp src-tauri/bridge/mobile-overrides.css src/mobile-overrides.css
           npx esbuild src-tauri/bridge/http-bridge.js --bundle --format=iife --platform=browser --outfile=src/securo-http-bridge.js
-          node -e "const fs=require('fs'); const file='src/app.html'; let html=fs.readFileSync(file,'utf8'); const snippet='<script>window.addEventListener(\"error\",function(e){var b=document.getElementById(\"securo-err\");if(!b){b=document.createElement(\"div\");b.id=\"securo-err\";b.style.cssText=\"position:fixed;top:0;left:0;right:0;z-index:999999;background:#b91c1c;color:#fff;padding:12px;font-family:monospace;font-size:12px;word-break:break-all;max-height:50vh;overflow:auto;\";(document.body||document.documentElement).appendChild(b);}b.innerHTML+=\"<b>JS Error:</b> \"+(e.message||e.error||e)+\"<br/>\";});window.addEventListener(\"unhandledrejection\",function(e){var b=document.getElementById(\"securo-err\");if(!b){b=document.createElement(\"div\");b.id=\"securo-err\";b.style.cssText=\"position:fixed;top:0;left:0;right:0;z-index:999999;background:#b91c1c;color:#fff;padding:12px;font-family:monospace;font-size:12px;word-break:break-all;max-height:50vh;overflow:auto;\";(document.body||document.documentElement).appendChild(b);}b.innerHTML+=\"<b>Promise Error:</b> \"+(e.reason?.message||e.reason||e)+\"<br/>\";});</script><link rel=\"stylesheet\" href=\"./mobile-overrides.css\"><script src=\"./securo-http-bridge.js\"></script>'; html=html.replace(/<head>/i, '<head>' + snippet); fs.writeFileSync(file, html);"
+          node -e "const fs=require('fs'); const file='src/app.html'; let html=fs.readFileSync(file,'utf8'); const snippet='<script>window.addEventListener(\"error\",function(e){var b=document.getElementById(\"securo-err\");if(!b){b=document.createElement(\"div\");b.id=\"securo-err\";b.style.cssText=\"position:fixed;top:0;left:0;right:0;z-index:999999;background:#b91c1c;color:#fff;padding:12px;font-family:monospace;font-size:12px;word-break:break-all;max-height:50vh;overflow:auto;\";(document.body||document.documentElement).appendChild(b);}b.innerHTML+=\"<b>JS Error:</b> \"+(e.message||e.error||e)+\"<br/>\";});window.addEventListener(\"unhandledrejection\",function(e){var b=document.getElementById(\"securo-err\");if(!b){b=document.createElement(\"div\");b.id=\"securo-err\";b.style.cssText=\"position:fixed;top:0;left:0;right:0;z-index:999999;background:#b91c1c;color:#fff;padding:12px;font-family:monospace;font-size:12px;word-break:break-all;max-height:50vh;overflow:auto;\";(document.body||document.documentElement).appendChild(b);}b.innerHTML+=\"<b>Promise Error:</b> \"+(e.reason?.message||e.reason||e)+\"<br/>\";});</script><link rel=\"stylesheet\" href=\"./mobile-overrides.css\"><script src=\"./securo-http-bridge.js\"></script>'; html=html.replace(/<head>/i, '<head>' + snippet); if(!html.includes('viewport-fit=cover')){ html=html.replace('width=device-width, initial-scale=1.0', 'width=device-width, initial-scale=1.0, viewport-fit=cover'); } fs.writeFileSync(file, html);"
 
       - name: Initialize Android project
         run: npm run tauri -- android init
 
-      - name: Configure Android permissions
+      - name: Configure Android permissions and insets
         shell: bash
         run: |
           MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
           if [[ -f "$MANIFEST" ]] && ! grep -q "ACCESS_NETWORK_STATE" "$MANIFEST"; then
             sed -i '/android.permission.INTERNET/a \    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' "$MANIFEST"
+          fi
+          MAIN_ACTIVITY="src-tauri/gen/android/app/src/main/java/com/securo/mobile/MainActivity.kt"
+          if [[ -f "$MAIN_ACTIVITY" ]]; then
+            cat << 'EOF' > "$MAIN_ACTIVITY"
+package com.securo.mobile
+
+import android.os.Bundle
+import android.view.View
+import androidx.activity.enableEdgeToEdge
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+
+class MainActivity : TauriActivity() {
+  override fun onCreate(savedInstanceState: Bundle?) {
+    enableEdgeToEdge()
+    super.onCreate(savedInstanceState)
+
+    val rootView: View = findViewById(android.R.id.content)
+    ViewCompat.setOnApplyWindowInsetsListener(rootView) { v, insets ->
+      val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+      v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+      insets
+    }
+  }
+}
+EOF
           fi
 
       - name: Build Android APK

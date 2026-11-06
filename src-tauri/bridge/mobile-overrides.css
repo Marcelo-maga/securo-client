@@ -1,4 +1,21 @@
-/* Keep the remote frontend readable inside a phone-sized WebView. */
+/* Keep the remote frontend readable inside a phone-sized WebView and respect safe area */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+}
+
+body {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+header,
+nav,
+[class*="sticky top-0"],
+[class*="fixed top-0"] {
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+}
+
 svg[width="640"][height="640"] {
   width: min(42vw, 360px) !important;
   height: min(42vw, 360px) !important;
