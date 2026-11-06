@@ -32,6 +32,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_connection_settings,
             commands::connect_server,
+            commands::save_server_url,
             commands::clear_server_url,
             commands::activate_app_window
         ])

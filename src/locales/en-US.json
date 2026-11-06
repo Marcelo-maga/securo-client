@@ -19,6 +19,7 @@
   "loading": "Loading configuration...",
   "checking": "Checking server health...",
   "success": "Server verified and connected.",
+  "forceConnect": "Save and continue anyway",
   "errors": {
     "INVALID_URL": "Enter a valid URL, including http:// or https://.",
     "INVALID_URL_SCHEME": "The URL must use http:// or https:// and include a host.",

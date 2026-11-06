@@ -1,3 +1,4 @@
+use std::time::Duration;
 use reqwest::Client;
 use serde::Serialize;
 use tauri::{Manager, State};
@@ -16,7 +17,7 @@ pub struct ConnectionSettings {
     allow_invalid_certs: bool,
 }
 
-fn normalize_url(value: &str) -> Result<String, AppError> {
+pub fn normalize_url(value: &str) -> Result<String, AppError> {
     let raw = value.trim();
     if raw.is_empty() {
         return Err(AppError::new(ErrorCode::InvalidUrl));
@@ -50,6 +51,36 @@ fn normalize_url(value: &str) -> Result<String, AppError> {
     Ok(parsed.to_string().trim_end_matches('/').to_string())
 }
 
+fn build_http_client(allow_invalid_certs: bool) -> Result<Client, AppError> {
+    let mut builder = Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(20))
+        .tcp_nodelay(true)
+        .user_agent("Mozilla/5.0 (Linux; Android 14; Mobile) Securo/1.0")
+        .redirect(reqwest::redirect::Policy::limited(10));
+
+    if allow_invalid_certs {
+        builder = builder
+            .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_hostnames(true);
+    }
+
+    builder
+        .build()
+        .map_err(|err| AppError::with_details(ErrorCode::HttpClientBuildFailed, err.to_string()))
+}
+
+fn format_error_chain(err: &reqwest::Error) -> String {
+    let mut full = err.to_string();
+    let mut source = std::error::Error::source(err);
+    while let Some(src) = source {
+        full.push_str(" -> ");
+        full.push_str(&src.to_string());
+        source = src.source();
+    }
+    full
+}
+
 #[tauri::command]
 pub fn get_connection_settings(app: tauri::AppHandle) -> Result<ConnectionSettings, AppError> {
     let store = app
@@ -71,6 +102,27 @@ pub fn get_connection_settings(app: tauri::AppHandle) -> Result<ConnectionSettin
 }
 
 #[tauri::command]
+pub async fn save_server_url(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    server_url: String,
+    allow_invalid_certs: bool,
+) -> Result<String, AppError> {
+    let normalized_url = normalize_url(&server_url)?;
+    let store = app
+        .store(STORE_FILE)
+        .map_err(|_| AppError::new(ErrorCode::ConfigOpenFailed))?;
+    let _guard = state.0.lock().await;
+    store.set(SERVER_URL_KEY, normalized_url.clone());
+    store.set(ALLOW_INVALID_CERTS_KEY, allow_invalid_certs);
+    store
+        .save()
+        .map_err(|_| AppError::new(ErrorCode::ConfigSaveFailed))?;
+
+    Ok(normalized_url)
+}
+
+#[tauri::command]
 pub async fn connect_server(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
@@ -78,43 +130,61 @@ pub async fn connect_server(
     allow_invalid_certs: bool,
 ) -> Result<String, AppError> {
     let normalized_url = normalize_url(&server_url)?;
-    let health_url = format!("{normalized_url}/api/health");
-    let mut client_builder = Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(10))
-        .timeout(std::time::Duration::from_secs(20))
-        .redirect(reqwest::redirect::Policy::limited(10));
+    let client = build_http_client(allow_invalid_certs)?;
 
-    if allow_invalid_certs {
-        client_builder = client_builder
-            .danger_accept_invalid_certs(true)
-            .danger_accept_invalid_hostnames(true);
-    }
+    // Endpoints to probe in priority order
+    let candidate_endpoints = [
+        format!("{normalized_url}/api/health"),
+        format!("{normalized_url}/api/info"),
+        format!("{normalized_url}/health"),
+    ];
 
-    let client = client_builder
-        .build()
-        .map_err(|err| AppError::with_details(ErrorCode::HttpClientBuildFailed, err.to_string()))?;
+    let mut last_error: Option<String> = None;
+    let mut last_status: Option<u16> = None;
+    let mut probe_succeeded = false;
 
-    let _ = match client.get(&health_url).send().await {
-        Ok(resp) if resp.status().is_success() => resp,
-        Ok(resp) if resp.status().as_u16() == 404 => {
-            // Fallback attempt to {normalized_url}/health in case backend mounts health directly at root
-            let fallback_url = format!("{normalized_url}/health");
-            if let Ok(fallback_resp) = client.get(&fallback_url).send().await {
-                if fallback_resp.status().is_success() {
-                    fallback_resp
-                } else {
-                    return Err(AppError::server_http_error(resp.status().as_u16()));
+    for endpoint in &candidate_endpoints {
+        match client.get(endpoint).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                probe_succeeded = true;
+                break;
+            }
+            Ok(resp) => {
+                let status = resp.status().as_u16();
+                last_status = Some(status);
+                if status == 404 || status == 405 {
+                    continue;
                 }
-            } else {
-                return Err(AppError::server_http_error(resp.status().as_u16()));
+                // Any other status code (e.g. 401, 403) confirms server reachability and valid TLS
+                probe_succeeded = true;
+                break;
+            }
+            Err(err) => {
+                let chain = format_error_chain(&err);
+                eprintln!("Probe failed for {endpoint}: {chain}");
+                last_error = Some(chain);
             }
         }
-        Ok(resp) => return Err(AppError::server_http_error(resp.status().as_u16())),
-        Err(err) => {
-            eprintln!("Error connecting to {health_url}: {err:?}");
-            return Err(AppError::with_details(ErrorCode::ServerUnreachable, err.to_string()));
+    }
+
+    if !probe_succeeded {
+        // Fallback root probe: if server responds with any status < 500, TLS and connectivity are valid
+        if let Ok(resp) = client.get(&normalized_url).send().await {
+            if resp.status().as_u16() < 500 {
+                probe_succeeded = true;
+            } else {
+                last_status = Some(resp.status().as_u16());
+            }
         }
-    };
+    }
+
+    if !probe_succeeded {
+        if let Some(status) = last_status {
+            return Err(AppError::server_http_error(status));
+        }
+        let details = last_error.unwrap_or_else(|| "Connection timed out or network is unreachable".to_string());
+        return Err(AppError::with_details(ErrorCode::ServerUnreachable, details));
+    }
 
     let store = app
         .store(STORE_FILE)
@@ -143,12 +213,20 @@ pub fn clear_server_url(app: tauri::AppHandle) -> Result<(), AppError> {
 
 #[tauri::command]
 pub fn activate_app_window(app: tauri::AppHandle) -> Result<(), String> {
-    let main_window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "Main window is not available".to_string())?;
-    main_window.show().map_err(|error| error.to_string())?;
-    if let Some(config_window) = app.get_webview_window("config") {
-        config_window.close().map_err(|error| error.to_string())?;
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let main_window = app
+            .get_webview_window("main")
+            .ok_or_else(|| "Main window is not available".to_string())?;
+        main_window.show().map_err(|error| error.to_string())?;
+        if let Some(config_window) = app.get_webview_window("config") {
+            config_window.close().map_err(|error| error.to_string())?;
+        }
+        Ok(())
     }
-    Ok(())
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = app;
+        Err("mobile uses single webview navigation".to_string())
+    }
 }

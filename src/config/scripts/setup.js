@@ -20,6 +20,7 @@ const LOCALES = {
     certHint: "Ative somente se você controla o servidor ou está em uma rede confiável.",
     connect: "Testar e continuar",
     connecting: "Testando servidor...",
+    forceConnect: "Salvar e continuar mesmo assim",
     useAnother: "Usar outro servidor",
     localStorage: "Armazenado localmente neste dispositivo",
     loading: "Carregando configuração...",
@@ -53,6 +54,7 @@ const LOCALES = {
     certHint: "Enable only when you control the server or trust the network.",
     connect: "Test and continue",
     connecting: "Testing server...",
+    forceConnect: "Save and continue anyway",
     useAnother: "Use another server",
     localStorage: "Stored locally on this device",
     loading: "Loading configuration...",
@@ -79,6 +81,8 @@ const button = document.querySelector("#connect-button");
 const buttonLabel = document.querySelector("#connect-label");
 const buttonIcon = document.querySelector("#button-icon");
 const loadingIcon = document.querySelector("#loading-icon");
+const forceConnectButton = document.querySelector("#force-connect-button");
+const forceConnectLabel = document.querySelector("#force-connect-label");
 const clearButton = document.querySelector("#clear-button");
 const status = document.querySelector("#status");
 let copy = LOCALES[locale] || LOCALES["en-US"];
@@ -103,6 +107,9 @@ function renderCopy() {
   });
   if (copy.urlPlaceholder) {
     input.placeholder = copy.urlPlaceholder;
+  }
+  if (forceConnectLabel && copy.forceConnect) {
+    forceConnectLabel.textContent = copy.forceConnect;
   }
   document.title = `Securo | ${copy.heading || "Setup"}`;
 }
@@ -130,6 +137,7 @@ function setBusy(isBusy) {
   button.disabled = isBusy;
   input.disabled = isBusy;
   certificateCheckbox.disabled = isBusy;
+  if (forceConnectButton) forceConnectButton.disabled = isBusy;
   buttonLabel.textContent = isBusy ? copy.connecting : copy.connect;
   buttonIcon.classList.toggle("hidden", isBusy);
   loadingIcon.classList.toggle("hidden", !isBusy);
@@ -140,24 +148,22 @@ function setConnected(serverUrl) {
   input.disabled = true;
   certificateCheckbox.disabled = true;
   button.hidden = true;
+  if (forceConnectButton) forceConnectButton.classList.add("hidden");
   clearButton.classList.remove("hidden");
   setStatus(copy.success, "success");
 }
 
 async function navigateToApp() {
+  const appTarget = window.location.pathname.includes("/config/") ? "../app.html" : "app.html";
   if (invoke) {
     try {
       await invoke("activate_app_window");
       return;
     } catch {
-      // Fallback if multi-window is not used (e.g. mobile single webview)
+      // Fallback for mobile / single-webview navigation
     }
   }
-  if (window.location.pathname.includes("/config/")) {
-    window.location.replace("../app.html");
-  } else if (window.location.pathname.endsWith("setup.html")) {
-    window.location.replace("app.html");
-  }
+  window.location.replace(appTarget);
 }
 
 async function connect(event) {
@@ -171,6 +177,7 @@ async function connect(event) {
 
   setBusy(true);
   setStatus(copy.checking);
+  if (forceConnectButton) forceConnectButton.classList.add("hidden");
 
   if (!invoke) {
     setStatus("Tauri API is not available.", "error");
@@ -205,6 +212,33 @@ async function connect(event) {
     } else {
       setStatus(errMsg, "error");
     }
+    if (forceConnectButton) forceConnectButton.classList.remove("hidden");
+    setBusy(false);
+  }
+}
+
+async function forceConnect() {
+  const rawUrl = input.value.trim();
+  if (!rawUrl) return;
+
+  setBusy(true);
+  setStatus(copy.loading);
+
+  if (!invoke) {
+    setStatus("Tauri API is not available.", "error");
+    setBusy(false);
+    return;
+  }
+
+  try {
+    const serverUrl = await invoke("save_server_url", {
+      server_url: rawUrl,
+      allow_invalid_certs: certificateCheckbox.checked,
+    });
+    setConnected(serverUrl);
+    await navigateToApp();
+  } catch (error) {
+    setStatus(errorMessage(error), "error");
     setBusy(false);
   }
 }
@@ -217,6 +251,7 @@ async function clearServer() {
     input.disabled = false;
     certificateCheckbox.disabled = false;
     button.hidden = false;
+    if (forceConnectButton) forceConnectButton.classList.add("hidden");
     clearButton.classList.add("hidden");
     setStatus();
     input.focus();
@@ -228,6 +263,10 @@ async function clearServer() {
 async function initialize() {
   renderCopy();
   form.addEventListener("submit", connect);
+  input.addEventListener("input", () => {
+    if (forceConnectButton) forceConnectButton.classList.add("hidden");
+  });
+  if (forceConnectButton) forceConnectButton.addEventListener("click", forceConnect);
   clearButton.addEventListener("click", clearServer);
 
   try {

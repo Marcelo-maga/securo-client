@@ -153,14 +153,17 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
 
       this._controller = new AbortController();
       if (this.timeout > 0) this._timer = setTimeout(() => this._controller.abort(), this.timeout);
+      const requestOptions = {
+        method: this._method,
+        headers: this._headers,
+        signal: this._controller.signal,
+        ...getDangerOptions(settings),
+      };
+      if (body !== null && body !== undefined && this._method !== "GET" && this._method !== "HEAD") {
+        requestOptions.body = body;
+      }
       try {
-        const response = await nativeFetch(targetUrl, {
-          method: this._method,
-          headers: this._headers,
-          body,
-          signal: this._controller.signal,
-          ...getDangerOptions(settings),
-        });
+        const response = await nativeFetch(targetUrl, requestOptions);
         this._status = response.status;
         this._statusText = response.statusText;
         this._responseHeaders = response.headers;
