@@ -134,7 +134,7 @@ function setConnected(serverUrl) {
 }
 
 async function navigateToApp() {
-  const appTarget = window.location.pathname.includes("/config/") ? "../app.html" : "app.html";
+  const appTarget = window.location.pathname.includes("/config/") ? "../app.html#/" : "app.html#/";
   if (invoke) {
     try {
       await invoke("activate_app_window");

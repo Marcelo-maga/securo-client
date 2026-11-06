@@ -12,21 +12,23 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(state::AppState::default())
         .setup(|app| {
-            let has_server = app
-                .store("config.json")
-                .ok()
-                .and_then(|store| store.get("server_url"))
-                .and_then(|value| value.as_str().map(str::to_owned))
-                .is_some();
-            let target = if has_server { "main" } else { "config" };
-            app.get_webview_window(target)
-                .ok_or_else(|| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        format!("window not found: {target}"),
-                    )
-                })?
-                .show()?;
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                let has_server = app
+                    .store("config.json")
+                    .ok()
+                    .and_then(|store| store.get("server_url"))
+                    .and_then(|value| value.as_str().map(str::to_owned))
+                    .is_some();
+                let target = if has_server { "main" } else { "config" };
+                if let Some(window) = app.get_webview_window(target) {
+                    window.show()?;
+                }
+            }
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            {
+                let _ = app;
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

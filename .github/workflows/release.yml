@@ -80,6 +80,8 @@ jobs:
         run: |
           cp ../src-tauri/bridge/mobile-overrides.css src/mobile-overrides.css
           printf '\nimport "./mobile-overrides.css";\n' >> src/main.tsx
+          sed -i 's/BrowserRouter/HashRouter/g' src/App.tsx
+          sed -i 's/define: {/base: ".\/",\n    define: {/' vite.config.ts
           if [[ -f package-lock.json ]]; then
             npm ci
           elif [[ -f pnpm-lock.yaml ]]; then
@@ -112,7 +114,7 @@ jobs:
           cp src-tauri/bridge/bootstrap.html src/index.html
           cp src-tauri/bridge/mobile-overrides.css src/mobile-overrides.css
           npx esbuild src-tauri/bridge/http-bridge.js --bundle --format=iife --platform=browser --outfile=src/securo-http-bridge.js
-          node -e "const fs=require('fs'); const file='src/app.html'; const html=fs.readFileSync(file,'utf8'); const injected=html.replace(/<\\/head>/i, '<link rel=\"stylesheet\" href=\"/mobile-overrides.css\"><script src=\"/securo-http-bridge.js\"></script></head>'); fs.writeFileSync(file, injected);"
+          node -e "const fs=require('fs'); const file='src/app.html'; let html=fs.readFileSync(file,'utf8'); const snippet='<script>window.addEventListener(\"error\",function(e){var b=document.getElementById(\"securo-err\");if(!b){b=document.createElement(\"div\");b.id=\"securo-err\";b.style.cssText=\"position:fixed;top:0;left:0;right:0;z-index:999999;background:#b91c1c;color:#fff;padding:12px;font-family:monospace;font-size:12px;word-break:break-all;max-height:50vh;overflow:auto;\";(document.body||document.documentElement).appendChild(b);}b.innerHTML+=\"<b>JS Error:</b> \"+(e.message||e.error||e)+\"<br/>\";});window.addEventListener(\"unhandledrejection\",function(e){var b=document.getElementById(\"securo-err\");if(!b){b=document.createElement(\"div\");b.id=\"securo-err\";b.style.cssText=\"position:fixed;top:0;left:0;right:0;z-index:999999;background:#b91c1c;color:#fff;padding:12px;font-family:monospace;font-size:12px;word-break:break-all;max-height:50vh;overflow:auto;\";(document.body||document.documentElement).appendChild(b);}b.innerHTML+=\"<b>Promise Error:</b> \"+(e.reason?.message||e.reason||e)+\"<br/>\";});</script><link rel=\"stylesheet\" href=\"./mobile-overrides.css\"><script src=\"./securo-http-bridge.js\"></script>'; html=html.replace(/<head>/i, '<head>' + snippet); fs.writeFileSync(file, html);"
 
       - name: Initialize Android project
         run: npm run tauri -- android init
