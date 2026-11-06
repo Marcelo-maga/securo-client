@@ -37,6 +37,14 @@
 
         <p id="status" class="status" role="status" aria-live="polite"></p>
 
+        <div id="error-container" class="error-container hidden">
+          <div class="error-header">
+            <span class="error-title">Detalhes do erro</span>
+            <button id="copy-error-button" type="button" class="btn-copy">Copiar</button>
+          </div>
+          <pre id="error-details" class="error-details"></pre>
+        </div>
+
         <button id="connect-button" type="submit" class="btn btn-primary">
           <span id="connect-label" data-i18n="connect">Conectar</span>
           <svg id="loading-icon" class="spinner hidden" viewBox="0 0 24 24" fill="none" aria-hidden="true">

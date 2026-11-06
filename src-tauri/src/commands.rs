@@ -70,15 +70,17 @@ fn build_http_client(allow_invalid_certs: bool) -> Result<Client, AppError> {
         .map_err(|err| AppError::with_details(ErrorCode::HttpClientBuildFailed, err.to_string()))
 }
 
-fn format_error_chain(err: &reqwest::Error) -> String {
-    let mut full = err.to_string();
+fn detailed_reqwest_error(endpoint: &str, err: &reqwest::Error) -> String {
+    let mut out = format!("Tentativa em: {endpoint}\nErro: {err}\n");
     let mut source = std::error::Error::source(err);
+    let mut depth = 1;
     while let Some(src) = source {
-        full.push_str(" -> ");
-        full.push_str(&src.to_string());
+        out.push_str(&format!("  Causa {depth}: {src}\n"));
         source = src.source();
+        depth += 1;
     }
-    full
+    out.push_str(&format!("Debug: {err:#?}\n"));
+    out
 }
 
 #[tauri::command]
@@ -132,58 +134,64 @@ pub async fn connect_server(
     let normalized_url = normalize_url(&server_url)?;
     let client = build_http_client(allow_invalid_certs)?;
 
-    // Endpoints to probe in priority order
     let candidate_endpoints = [
         format!("{normalized_url}/api/health"),
         format!("{normalized_url}/api/info"),
         format!("{normalized_url}/health"),
     ];
 
-    let mut last_error: Option<String> = None;
-    let mut last_status: Option<u16> = None;
+    let mut probe_logs = Vec::new();
     let mut probe_succeeded = false;
 
     for endpoint in &candidate_endpoints {
         match client.get(endpoint).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                probe_succeeded = true;
-                break;
-            }
             Ok(resp) => {
                 let status = resp.status().as_u16();
-                last_status = Some(status);
-                if status == 404 || status == 405 {
-                    continue;
+                if resp.status().is_success() {
+                    probe_succeeded = true;
+                    break;
                 }
-                // Any other status code (e.g. 401, 403) confirms server reachability and valid TLS
-                probe_succeeded = true;
-                break;
+                let body_text = resp.text().await.unwrap_or_default();
+                let snippet = if body_text.len() > 300 { &body_text[..300] } else { &body_text };
+                probe_logs.push(format!("Tentativa em: {endpoint}\nResposta HTTP {status}: {snippet}\n"));
+                if status != 404 && status != 405 {
+                    probe_succeeded = true;
+                    break;
+                }
             }
             Err(err) => {
-                let chain = format_error_chain(&err);
-                eprintln!("Probe failed for {endpoint}: {chain}");
-                last_error = Some(chain);
+                let detail = detailed_reqwest_error(endpoint, &err);
+                eprintln!("{detail}");
+                probe_logs.push(detail);
             }
         }
     }
 
     if !probe_succeeded {
-        // Fallback root probe: if server responds with any status < 500, TLS and connectivity are valid
-        if let Ok(resp) = client.get(&normalized_url).send().await {
-            if resp.status().as_u16() < 500 {
-                probe_succeeded = true;
-            } else {
-                last_status = Some(resp.status().as_u16());
+        // Fallback root probe
+        match client.get(&normalized_url).send().await {
+            Ok(resp) => {
+                let status = resp.status().as_u16();
+                if status < 500 {
+                    probe_succeeded = true;
+                } else {
+                    let body = resp.text().await.unwrap_or_default();
+                    let snippet = if body.len() > 300 { &body[..300] } else { &body };
+                    probe_logs.push(format!("Tentativa em: {normalized_url}\nResposta HTTP {status}: {snippet}\n"));
+                }
+            }
+            Err(err) => {
+                probe_logs.push(detailed_reqwest_error(&normalized_url, &err));
             }
         }
     }
 
     if !probe_succeeded {
-        if let Some(status) = last_status {
-            return Err(AppError::server_http_error(status));
-        }
-        let details = last_error.unwrap_or_else(|| "Connection timed out or network is unreachable".to_string());
-        return Err(AppError::with_details(ErrorCode::ServerUnreachable, details));
+        let full_error_report = probe_logs.join("\n---\n");
+        return Err(AppError::with_details(
+            ErrorCode::ServerUnreachable,
+            full_error_report,
+        ));
     }
 
     let store = app

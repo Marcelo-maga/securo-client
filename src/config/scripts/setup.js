@@ -23,7 +23,7 @@ const LOCALES = {
       INVALID_URL_CREDENTIALS: "A URL não pode conter credenciais ou fragmento.",
       CONFIG_OPEN_FAILED: "Não foi possível abrir a configuração local.",
       HTTP_CLIENT_BUILD_FAILED: "Não foi possível preparar a conexão.",
-      SERVER_UNREACHABLE: "Não foi possível alcançar o servidor. Verifique a URL e tente novamente.",
+      SERVER_UNREACHABLE: "Não foi possível alcançar o servidor.",
       SERVER_HTTP_ERROR: "O servidor respondeu com HTTP {status}.",
       CONFIG_SAVE_FAILED: "Não foi possível salvar a configuração local.",
       UNKNOWN: "Não foi possível conectar ao servidor."
@@ -48,7 +48,7 @@ const LOCALES = {
       INVALID_URL_CREDENTIALS: "The URL cannot contain credentials or a fragment.",
       CONFIG_OPEN_FAILED: "We could not open the local configuration.",
       HTTP_CLIENT_BUILD_FAILED: "We could not prepare the connection.",
-      SERVER_UNREACHABLE: "We could not reach this server. Check the URL and try again.",
+      SERVER_UNREACHABLE: "We could not reach this server.",
       SERVER_HTTP_ERROR: "The server returned HTTP {status}.",
       CONFIG_SAVE_FAILED: "We could not save the local configuration.",
       UNKNOWN: "We could not connect to this server."
@@ -64,6 +64,9 @@ const buttonLabel = document.querySelector("#connect-label");
 const loadingIcon = document.querySelector("#loading-icon");
 const forceConnectButton = document.querySelector("#force-connect-button");
 const forceConnectLabel = document.querySelector("#force-connect-label");
+const errorContainer = document.querySelector("#error-container");
+const errorDetails = document.querySelector("#error-details");
+const copyErrorButton = document.querySelector("#copy-error-button");
 const clearButton = document.querySelector("#clear-button");
 const status = document.querySelector("#status");
 let copy = LOCALES[locale] || LOCALES["en-US"];
@@ -101,12 +104,8 @@ function formatMessage(template, values = {}) {
 
 function errorMessage(error) {
   const code = error?.code || "UNKNOWN";
-  const template = copy.errors?.[code] || copy.errors?.UNKNOWN || "Connection error";
-  let message = formatMessage(template, error);
-  if (error?.details) {
-    message += ` (${error.details})`;
-  }
-  return message;
+  const template = copy.errors?.[code] || copy.errors?.UNKNOWN || "Erro de conexão";
+  return formatMessage(template, error);
 }
 
 function setStatus(message = "", kind = "") {
@@ -129,6 +128,7 @@ function setConnected(serverUrl) {
   certificateCheckbox.disabled = true;
   button.classList.add("hidden");
   if (forceConnectButton) forceConnectButton.classList.add("hidden");
+  if (errorContainer) errorContainer.classList.add("hidden");
   clearButton.classList.remove("hidden");
   setStatus(copy.success, "success");
 }
@@ -158,6 +158,7 @@ async function connect(event) {
   setBusy(true);
   setStatus(copy.checking);
   if (forceConnectButton) forceConnectButton.classList.add("hidden");
+  if (errorContainer) errorContainer.classList.add("hidden");
 
   if (!invoke) {
     setStatus("Tauri API is not available.", "error");
@@ -185,13 +186,20 @@ async function connect(event) {
       certificateCheckbox.checked = true;
       setStatus(
         isPortuguese
-          ? `${errMsg} Dica: certificado autoassinado ativado.`
-          : `${errMsg} Tip: self-signed certificate option enabled.`,
+          ? `${errMsg} (Certificado autoassinado ativado)`
+          : `${errMsg} (Self-signed certificate enabled)`,
         "error"
       );
     } else {
       setStatus(errMsg, "error");
     }
+
+    const fullErr = error?.details || (typeof error === "string" ? error : JSON.stringify(error, null, 2));
+    if (fullErr && errorDetails && errorContainer) {
+      errorDetails.textContent = fullErr;
+      errorContainer.classList.remove("hidden");
+    }
+
     if (forceConnectButton) forceConnectButton.classList.remove("hidden");
     setBusy(false);
   }
@@ -203,6 +211,7 @@ async function forceConnect() {
 
   setBusy(true);
   setStatus(copy.loading);
+  if (errorContainer) errorContainer.classList.add("hidden");
 
   if (!invoke) {
     setStatus("Tauri API is not available.", "error");
@@ -219,6 +228,11 @@ async function forceConnect() {
     await navigateToApp();
   } catch (error) {
     setStatus(errorMessage(error), "error");
+    const fullErr = error?.details || (typeof error === "string" ? error : JSON.stringify(error, null, 2));
+    if (fullErr && errorDetails && errorContainer) {
+      errorDetails.textContent = fullErr;
+      errorContainer.classList.remove("hidden");
+    }
     setBusy(false);
   }
 }
@@ -232,6 +246,7 @@ async function clearServer() {
     certificateCheckbox.disabled = false;
     button.classList.remove("hidden");
     if (forceConnectButton) forceConnectButton.classList.add("hidden");
+    if (errorContainer) errorContainer.classList.add("hidden");
     clearButton.classList.add("hidden");
     setStatus();
     input.focus();
@@ -245,8 +260,26 @@ async function initialize() {
   form.addEventListener("submit", connect);
   input.addEventListener("input", () => {
     if (forceConnectButton) forceConnectButton.classList.add("hidden");
+    if (errorContainer) errorContainer.classList.add("hidden");
   });
   if (forceConnectButton) forceConnectButton.addEventListener("click", forceConnect);
+  copyErrorButton?.addEventListener("click", async () => {
+    const text = errorDetails?.textContent || "";
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+    const orig = copyErrorButton.textContent;
+    copyErrorButton.textContent = isPortuguese ? "Copiado!" : "Copied!";
+    setTimeout(() => { copyErrorButton.textContent = orig; }, 2000);
+  });
   clearButton.addEventListener("click", clearServer);
 
   try {
