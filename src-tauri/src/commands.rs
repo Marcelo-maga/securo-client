@@ -17,14 +17,34 @@ pub struct ConnectionSettings {
 }
 
 fn normalize_url(value: &str) -> Result<String, AppError> {
-    let trimmed = value.trim().trim_end_matches('/');
-    let parsed = reqwest::Url::parse(trimmed).map_err(|_| AppError::new(ErrorCode::InvalidUrl))?;
+    let raw = value.trim();
+    if raw.is_empty() {
+        return Err(AppError::new(ErrorCode::InvalidUrl));
+    }
+
+    let candidate = if !raw.starts_with("http://") && !raw.starts_with("https://") {
+        format!("https://{raw}")
+    } else {
+        raw.to_string()
+    };
+
+    let mut parsed = reqwest::Url::parse(&candidate).map_err(|err| {
+        AppError::with_details(ErrorCode::InvalidUrl, err.to_string())
+    })?;
 
     if !matches!(parsed.scheme(), "http" | "https") || parsed.host().is_none() {
         return Err(AppError::new(ErrorCode::InvalidUrlScheme));
     }
     if !parsed.username().is_empty() || parsed.password().is_some() || parsed.fragment().is_some() {
         return Err(AppError::new(ErrorCode::InvalidUrlCredentials));
+    }
+
+    // If user provided a path ending in /api or /api/, strip it so the base server URL is clean
+    let mut path = parsed.path().trim_end_matches('/').to_string();
+    if path.ends_with("/api") {
+        path = path.trim_end_matches("/api").trim_end_matches('/').to_string();
+        let path_to_set = if path.is_empty() { "/" } else { &path };
+        parsed.set_path(path_to_set);
     }
 
     Ok(parsed.to_string().trim_end_matches('/').to_string())
@@ -60,23 +80,41 @@ pub async fn connect_server(
     let normalized_url = normalize_url(&server_url)?;
     let health_url = format!("{normalized_url}/api/health");
     let mut client_builder = Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(3))
-        .timeout(std::time::Duration::from_secs(8));
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::limited(10));
+
     if allow_invalid_certs {
-        client_builder = client_builder.danger_accept_invalid_certs(true);
+        client_builder = client_builder
+            .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_hostnames(true);
     }
+
     let client = client_builder
         .build()
-        .map_err(|_| AppError::new(ErrorCode::HttpClientBuildFailed))?;
-    let response = client
-        .get(health_url)
-        .send()
-        .await
-        .map_err(|_| AppError::new(ErrorCode::ServerUnreachable))?;
+        .map_err(|err| AppError::with_details(ErrorCode::HttpClientBuildFailed, err.to_string()))?;
 
-    if !response.status().is_success() {
-        return Err(AppError::server_http_error(response.status().as_u16()));
-    }
+    let _ = match client.get(&health_url).send().await {
+        Ok(resp) if resp.status().is_success() => resp,
+        Ok(resp) if resp.status().as_u16() == 404 => {
+            // Fallback attempt to {normalized_url}/health in case backend mounts health directly at root
+            let fallback_url = format!("{normalized_url}/health");
+            if let Ok(fallback_resp) = client.get(&fallback_url).send().await {
+                if fallback_resp.status().is_success() {
+                    fallback_resp
+                } else {
+                    return Err(AppError::server_http_error(resp.status().as_u16()));
+                }
+            } else {
+                return Err(AppError::server_http_error(resp.status().as_u16()));
+            }
+        }
+        Ok(resp) => return Err(AppError::server_http_error(resp.status().as_u16())),
+        Err(err) => {
+            eprintln!("Error connecting to {health_url}: {err:?}");
+            return Err(AppError::with_details(ErrorCode::ServerUnreachable, err.to_string()));
+        }
+    };
 
     let store = app
         .store(STORE_FILE)

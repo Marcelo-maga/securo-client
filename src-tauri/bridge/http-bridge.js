@@ -36,13 +36,26 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
     return targetUrl.toString();
   }
 
+  function getDangerOptions(settings) {
+    if (!settings?.allow_invalid_certs) return {};
+    return {
+      danger: {
+        acceptInvalidCerts: true,
+        acceptInvalidHostnames: true,
+      },
+    };
+  }
+
   const browserFetch = window.fetch.bind(window);
   window.fetch = async (input, init) => {
     if (!getRelativeApiUrl(input)) return browserFetch(input, init);
     const settings = await getSettings();
     const targetUrl = settings.server_url && getApiUrl(input, settings.server_url);
     if (!targetUrl) return browserFetch(input, init);
-    return nativeFetch(targetUrl, init);
+    return nativeFetch(targetUrl, {
+      ...init,
+      ...getDangerOptions(settings),
+    });
   };
 
   const BrowserXHR = window.XMLHttpRequest;
@@ -146,6 +159,7 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
           headers: this._headers,
           body,
           signal: this._controller.signal,
+          ...getDangerOptions(settings),
         });
         this._status = response.status;
         this._statusText = response.statusText;

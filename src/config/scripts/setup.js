@@ -114,7 +114,11 @@ function formatMessage(template, values = {}) {
 function errorMessage(error) {
   const code = error?.code || "UNKNOWN";
   const template = copy.errors?.[code] || copy.errors?.UNKNOWN || "Connection error";
-  return formatMessage(template, error);
+  let message = formatMessage(template, error);
+  if (error?.details) {
+    message += ` (${error.details})`;
+  }
+  return message;
 }
 
 function setStatus(message = "", kind = "") {
@@ -182,7 +186,25 @@ async function connect(event) {
     setConnected(serverUrl);
     await navigateToApp();
   } catch (error) {
-    setStatus(errorMessage(error), "error");
+    const errMsg = errorMessage(error);
+    const detailsStr = String(error?.details || "").toLowerCase();
+    const isCertError =
+      detailsStr.includes("cert") ||
+      detailsStr.includes("ssl") ||
+      detailsStr.includes("tls") ||
+      detailsStr.includes("pkix") ||
+      detailsStr.includes("handshake");
+    if (isCertError && !certificateCheckbox.checked) {
+      certificateCheckbox.checked = true;
+      setStatus(
+        isPortuguese
+          ? `${errMsg} Dica: ativamos a opção de certificado autoassinado. Tente conectar novamente.`
+          : `${errMsg} Tip: self-signed certificate option enabled. Try connecting again.`,
+        "error"
+      );
+    } else {
+      setStatus(errMsg, "error");
+    }
     setBusy(false);
   }
 }
