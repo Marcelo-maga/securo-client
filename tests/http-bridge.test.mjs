@@ -20,7 +20,13 @@ function getApiUrl(input, serverUrl, baseHref = 'http://localhost:1420/') {
   try {
     const parsed = new URL(urlStr, baseHref);
     const target = new URL(serverUrl);
-    target.pathname = parsed.pathname;
+    const rawPath = target.pathname;
+    const basePath = rawPath.endsWith('/') ? rawPath.slice(0, -1) : rawPath;
+    if (basePath && !parsed.pathname.startsWith(basePath + '/')) {
+      target.pathname = basePath + parsed.pathname;
+    } else {
+      target.pathname = parsed.pathname;
+    }
     target.search = parsed.search;
     target.hash = '';
     return target.toString();
@@ -105,6 +111,18 @@ describe('Native HTTP Bridge (securo-http-bridge)', () => {
       const input = '/api/goals?category=savings#target-progress';
       const rewritten = getApiUrl(input, server);
       assert.equal(rewritten, 'https://securo.homelab.lan:8443/api/goals?category=savings');
+    });
+
+    test('preserves server subpath when rewriting endpoints', () => {
+      const subpathServer = 'https://my-domain.com/finance';
+      assert.equal(
+        getApiUrl('/api/accounts', subpathServer),
+        'https://my-domain.com/finance/api/accounts'
+      );
+      assert.equal(
+        getApiUrl('/finance/api/accounts', subpathServer),
+        'https://my-domain.com/finance/api/accounts'
+      );
     });
 
     test('works with IP addresses and standard HTTP ports', () => {

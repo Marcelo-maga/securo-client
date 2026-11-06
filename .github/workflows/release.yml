@@ -350,6 +350,8 @@ jobs:
     needs: [windows, android]
     if: |
       always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
       (needs.windows.result == 'success' || needs.android.result == 'success') &&
       (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
@@ -369,7 +371,8 @@ jobs:
         run: |
           cd release-artifacts
           rm -f SHA256SUMS.txt
-          sha256sum * > SHA256SUMS.txt
+          find . -maxdepth 1 -type f ! -name "SHA256SUMS.txt" -exec sha256sum {} + | sed 's|\./||' > /tmp/SHA256SUMS.txt
+          mv /tmp/SHA256SUMS.txt SHA256SUMS.txt
           echo "=== Consolidated SHA256SUMS.txt ==="
           cat SHA256SUMS.txt
 

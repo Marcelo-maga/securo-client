@@ -31,7 +31,13 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
     try {
       const parsed = new URL(urlStr, window.location.href);
       const target = new URL(serverUrl);
-      target.pathname = parsed.pathname;
+      const rawPath = target.pathname;
+      const basePath = rawPath.endsWith("/") ? rawPath.slice(0, -1) : rawPath;
+      if (basePath && !parsed.pathname.startsWith(basePath + "/")) {
+        target.pathname = basePath + parsed.pathname;
+      } else {
+        target.pathname = parsed.pathname;
+      }
       target.search = parsed.search;
       target.hash = "";
       return target.toString();
