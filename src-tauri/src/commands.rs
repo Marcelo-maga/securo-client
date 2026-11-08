@@ -92,6 +92,19 @@ pub fn grant_server_http_scope(app: &tauri::AppHandle, server_url: &str) -> Resu
     .map_err(|err| AppError::with_details(ErrorCode::HttpClientBuildFailed, err.to_string()))
 }
 
+pub fn is_config_view_path(path: Option<&str>) -> bool {
+    match path {
+        Some(p) => {
+            let trimmed = p.trim();
+            trimmed == "/config/config.html"
+                || trimmed == "config/config.html"
+                || trimmed == "/config.html"
+                || trimmed == "config.html"
+        }
+        None => false,
+    }
+}
+
 pub fn validate_config_access(
     is_mobile: bool,
     window_label: &str,
@@ -100,12 +113,12 @@ pub fn validate_config_access(
 ) -> Result<(), AppError> {
     let allowed = if is_mobile {
         window_label == "main"
-            && current_url_path == Some(CONFIG_VIEW_PATH)
-            && verified_loaded_path == Some(CONFIG_VIEW_PATH)
+            && is_config_view_path(current_url_path)
+            && (verified_loaded_path.is_none() || is_config_view_path(verified_loaded_path))
     } else {
         window_label == "config"
-            && current_url_path == Some(CONFIG_VIEW_PATH)
-            && verified_loaded_path == Some(CONFIG_VIEW_PATH)
+            && is_config_view_path(current_url_path)
+            && (verified_loaded_path.is_none() || is_config_view_path(verified_loaded_path))
     };
 
     if allowed {
@@ -794,6 +807,20 @@ mod tests {
             )
             .is_ok()
         );
+
+        // Mobile relative config path from Android WebView (config/config.html)
+        assert!(
+            validate_config_access(
+                true,
+                "main",
+                Some("config/config.html"),
+                Some("config/config.html")
+            )
+            .is_ok()
+        );
+
+        // Mobile initial navigation before on_page_load has recorded verified path
+        assert!(validate_config_access(true, "main", Some("/config/config.html"), None).is_ok());
     }
 
     #[test]

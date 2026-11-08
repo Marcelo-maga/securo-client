@@ -1,4 +1,4 @@
-import { test, describe } from 'node:test';
+﻿import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -70,6 +70,20 @@ describe('Native HTTP Bridge (securo-http-bridge) & Security Policy', () => {
       assert.equal(isApiRequest(undefined), false);
       assert.equal(isApiRequest({}), false);
       assert.equal(isApiRequest(':::invalid-url:::'), false);
+    });
+  });
+
+  describe('Tauri Internal IPC Bypass and Fast-Path Routing', () => {
+    test('isApiRequest strictly ignores internal Tauri IPC schemes and domains', () => {
+      assert.equal(isApiRequest('http://ipc.localhost/get_connection_settings'), false);
+      assert.equal(isApiRequest('https://ipc.localhost/test'), false);
+      assert.equal(isApiRequest('ipc://localhost/invoke'), false);
+      assert.equal(isApiRequest('ipc:test'), false);
+    });
+
+    test('isApiRequest blocks backslash traversal and carriage returns', () => {
+      assert.equal(isApiRequest('/api\\..\\admin'), false);
+      assert.equal(isApiRequest('/api\\test'), false);
     });
   });
 

@@ -16,10 +16,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            if let Some(state) = app.try_state::<commands::SecurityState>() {
-                state.record_page_load("main", "/index.html");
-                state.record_page_load("config", "/config/config.html");
-            }
+
 
             let store = app.store("config.json").ok();
             let saved_server_url = store
