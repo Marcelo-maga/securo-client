@@ -1,9 +1,11 @@
-use reqwest::Client;
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Mutex;
 use std::time::Duration;
 use tauri::Manager;
 use tauri::ipc::CapabilityBuilder;
+use tauri_plugin_http::reqwest::{self, Client};
 use tauri_plugin_store::StoreExt;
 
 use crate::errors::{AppError, ErrorCode};
@@ -12,6 +14,36 @@ const STORE_FILE: &str = "config.json";
 const SERVER_URL_KEY: &str = "server_url";
 const ALLOW_INVALID_CERTS_KEY: &str = "allow_invalid_certs";
 const AUTO_CONNECT_KEY: &str = "auto_connect";
+const CONFIG_VIEW_PATH: &str = "/config/config.html";
+
+/// Tracks verified top-level page loads and already-granted runtime HTTP scopes.
+#[derive(Default)]
+pub struct SecurityState {
+    verified_page_paths: Mutex<HashMap<String, String>>,
+    granted_scopes: Mutex<HashSet<String>>,
+}
+
+impl SecurityState {
+    pub fn record_page_load(&self, label: &str, path: &str) {
+        if let Ok(mut map) = self.verified_page_paths.lock() {
+            map.insert(label.to_string(), path.to_string());
+        }
+    }
+
+    pub fn verified_path(&self, label: &str) -> Option<String> {
+        self.verified_page_paths
+            .lock()
+            .ok()
+            .and_then(|map| map.get(label).cloned())
+    }
+
+    pub fn mark_scope_granted(&self, normalized_url: &str) -> bool {
+        self.granted_scopes
+            .lock()
+            .map(|mut set| set.insert(normalized_url.to_string()))
+            .unwrap_or(true)
+    }
+}
 
 #[derive(Serialize)]
 pub struct ConnectionSettings {
@@ -39,6 +71,12 @@ pub fn build_api_scope_entries(normalized_server_url: &str) -> Vec<HttpScopeEntr
 
 pub fn grant_server_http_scope(app: &tauri::AppHandle, server_url: &str) -> Result<(), AppError> {
     let normalized = normalize_url(server_url)?;
+    if let Some(state) = app.try_state::<SecurityState>()
+        && !state.mark_scope_granted(&normalized)
+    {
+        return Ok(());
+    }
+
     let allowed = build_api_scope_entries(&normalized);
     let denied: Vec<HttpScopeEntry> = Vec::new();
 
@@ -54,20 +92,129 @@ pub fn grant_server_http_scope(app: &tauri::AppHandle, server_url: &str) -> Resu
     .map_err(|err| AppError::with_details(ErrorCode::HttpClientBuildFailed, err.to_string()))
 }
 
-fn ensure_config_context(webview: &tauri::WebviewWindow) -> Result<(), AppError> {
-    if webview.label() == "config" {
-        return Ok(());
+pub fn validate_config_access(
+    is_mobile: bool,
+    window_label: &str,
+    current_url_path: Option<&str>,
+    verified_loaded_path: Option<&str>,
+) -> Result<(), AppError> {
+    let allowed = if is_mobile {
+        window_label == "main"
+            && current_url_path == Some(CONFIG_VIEW_PATH)
+            && verified_loaded_path == Some(CONFIG_VIEW_PATH)
+    } else {
+        window_label == "config"
+            && current_url_path == Some(CONFIG_VIEW_PATH)
+            && verified_loaded_path == Some(CONFIG_VIEW_PATH)
+    };
+
+    if allowed {
+        Ok(())
+    } else {
+        Err(AppError::with_details(
+            ErrorCode::ProxyForbidden,
+            "Server connection settings can only be modified from the isolated configuration screen.",
+        ))
     }
-    if let Ok(current_url) = webview.url() {
-        let path = current_url.path();
-        if path.ends_with("/config/config.html") || path.ends_with("/config.html") {
-            return Ok(());
-        }
-    }
-    Err(AppError::with_details(
-        ErrorCode::ProxyForbidden,
-        "Server connection settings can only be modified from the configuration screen.",
-    ))
+}
+
+fn ensure_config_context(
+    app: &tauri::AppHandle,
+    webview: &tauri::WebviewWindow,
+) -> Result<(), AppError> {
+    let current_path = webview.url().ok().map(|u| u.path().to_string());
+    let verified_path = app
+        .try_state::<SecurityState>()
+        .and_then(|state| state.verified_path(webview.label()));
+    let is_mobile = cfg!(any(target_os = "android", target_os = "ios"));
+
+    validate_config_access(
+        is_mobile,
+        webview.label(),
+        current_path.as_deref(),
+        verified_path.as_deref(),
+    )
+}
+
+fn is_blocked_port(port: u16) -> bool {
+    matches!(
+        port,
+        1 | 7
+            | 9
+            | 11
+            | 13
+            | 15
+            | 17
+            | 19
+            | 20
+            | 21
+            | 22
+            | 23
+            | 25
+            | 37
+            | 42
+            | 43
+            | 53
+            | 69
+            | 77
+            | 79
+            | 87
+            | 95
+            | 101
+            | 102
+            | 103
+            | 104
+            | 109
+            | 110
+            | 111
+            | 113
+            | 115
+            | 117
+            | 119
+            | 123
+            | 135
+            | 137
+            | 139
+            | 143
+            | 161
+            | 179
+            | 389
+            | 427
+            | 445
+            | 465
+            | 512
+            | 513
+            | 514
+            | 515
+            | 526
+            | 530
+            | 531
+            | 532
+            | 540
+            | 548
+            | 554
+            | 556
+            | 563
+            | 587
+            | 601
+            | 636
+            | 989
+            | 990
+            | 993
+            | 995
+            | 1719
+            | 1720
+            | 1723
+            | 2049
+            | 3306
+            | 3389
+            | 5060
+            | 5061
+            | 5432
+            | 6379
+            | 6566
+            | 6665..=6669 | 6697 | 10080
+    )
 }
 
 pub fn normalize_url(value: &str) -> Result<String, AppError> {
@@ -91,6 +238,14 @@ pub fn normalize_url(value: &str) -> Result<String, AppError> {
     if !parsed.username().is_empty() || parsed.password().is_some() || parsed.fragment().is_some() {
         return Err(AppError::new(ErrorCode::InvalidUrlCredentials));
     }
+    if parsed.query().is_some() {
+        return Err(AppError::new(ErrorCode::InvalidUrl));
+    }
+    if let Some(port) = parsed.port()
+        && is_blocked_port(port)
+    {
+        return Err(AppError::new(ErrorCode::InvalidUrl));
+    }
 
     // If user provided a path ending in /api or /api/, strip it so the base server URL is clean
     let clean_path = parsed.path().trim_end_matches('/');
@@ -102,13 +257,27 @@ pub fn normalize_url(value: &str) -> Result<String, AppError> {
     Ok(parsed.to_string().trim_end_matches('/').to_string())
 }
 
-fn build_http_client(allow_invalid_certs: bool) -> Result<Client, AppError> {
+fn build_http_client(
+    base_url: &reqwest::Url,
+    allow_invalid_certs: bool,
+) -> Result<Client, AppError> {
+    let allowed_origin = base_url.origin();
+    let redirect_policy = reqwest::redirect::Policy::custom(move |attempt| {
+        if attempt.previous().len() >= 5 {
+            return attempt.error("Too many redirects");
+        }
+        if attempt.url().origin() != allowed_origin {
+            return attempt.stop();
+        }
+        attempt.follow()
+    });
+
     let mut builder = Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(20))
         .tcp_nodelay(true)
-        .user_agent("Mozilla/5.0 (Linux; Android 14; Mobile) Securo/1.0")
-        .redirect(reqwest::redirect::Policy::limited(10));
+        .user_agent(concat!("SecuroClient/", env!("CARGO_PKG_VERSION")))
+        .redirect(redirect_policy);
 
     if allow_invalid_certs {
         builder = builder
@@ -130,8 +299,29 @@ fn detailed_reqwest_error(endpoint: &str, err: &reqwest::Error) -> String {
         source = src.source();
         depth += 1;
     }
-    out.push_str(&format!("Debug: {err:#?}\n"));
+    #[cfg(debug_assertions)]
+    {
+        out.push_str(&format!("Debug: {err:#?}\n"));
+    }
     out
+}
+
+fn reset_main_webview_session(app: &tauri::AppHandle, navigate_away: bool) {
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.clear_all_browsing_data();
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if navigate_away {
+            if let Ok(mut target_url) = main_window.url() {
+                target_url.set_path("/index.html");
+                target_url.set_query(None);
+                target_url.set_fragment(None);
+                let _ = main_window.navigate(target_url);
+            }
+            let _ = main_window.hide();
+        }
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        let _ = navigate_away;
+    }
 }
 
 fn save_config(
@@ -143,6 +333,17 @@ fn save_config(
     let store = app
         .store(STORE_FILE)
         .map_err(|_| AppError::new(ErrorCode::ConfigOpenFailed))?;
+    let previous_url = store
+        .get(SERVER_URL_KEY)
+        .and_then(|value| value.as_str().map(str::to_owned));
+
+    if previous_url
+        .as_deref()
+        .is_some_and(|prev| prev != server_url)
+    {
+        reset_main_webview_session(app, false);
+    }
+
     store.set(SERVER_URL_KEY, server_url);
     store.set(ALLOW_INVALID_CERTS_KEY, allow_invalid_certs);
     if let Some(auto_conn) = auto_connect {
@@ -164,21 +365,19 @@ async fn probe_endpoint(
             let reachable = if is_fallback_root {
                 status < 500
             } else {
-                resp.status().is_success() || (status != 404 && status != 405)
+                resp.status().is_success()
+                    || (status != 404 && status != 405 && !resp.status().is_redirection())
             };
 
-            if reachable {
+            if reachable && !resp.status().is_redirection() {
                 Ok(true)
             } else {
-                let body = resp.text().await.unwrap_or_default();
-                let snippet: String = body.chars().take(300).collect();
-                Err(format!(
-                    "Attempt at: {url}\nHTTP response {status}: {snippet}\n"
-                ))
+                Err(format!("Attempt at: {url}\nHTTP response {status}\n"))
             }
         }
         Err(err) => {
             let detail = detailed_reqwest_error(url, &err);
+            #[cfg(debug_assertions)]
             eprintln!("{detail}");
             Err(detail)
         }
@@ -216,7 +415,7 @@ pub fn set_auto_connect(
     webview: tauri::WebviewWindow,
     auto_connect: bool,
 ) -> Result<bool, AppError> {
-    ensure_config_context(&webview)?;
+    ensure_config_context(&app, &webview)?;
     let store = app
         .store(STORE_FILE)
         .map_err(|_| AppError::new(ErrorCode::ConfigOpenFailed))?;
@@ -235,7 +434,7 @@ pub fn save_server_url(
     allow_invalid_certs: bool,
     auto_connect: Option<bool>,
 ) -> Result<String, AppError> {
-    ensure_config_context(&webview)?;
+    ensure_config_context(&app, &webview)?;
     let normalized_url = normalize_url(&server_url)?;
     grant_server_http_scope(&app, &normalized_url)?;
     save_config(&app, &normalized_url, allow_invalid_certs, auto_connect)?;
@@ -250,9 +449,11 @@ pub async fn connect_server(
     allow_invalid_certs: bool,
     auto_connect: Option<bool>,
 ) -> Result<String, AppError> {
-    ensure_config_context(&webview)?;
+    ensure_config_context(&app, &webview)?;
     let normalized_url = normalize_url(&server_url)?;
-    let client = build_http_client(allow_invalid_certs)?;
+    let parsed_base = reqwest::Url::parse(&normalized_url)
+        .map_err(|err| AppError::with_details(ErrorCode::InvalidUrl, err.to_string()))?;
+    let client = build_http_client(&parsed_base, allow_invalid_certs)?;
 
     let candidates = [
         (format!("{normalized_url}/api/health"), false),
@@ -292,7 +493,7 @@ pub fn clear_server_url(
     app: tauri::AppHandle,
     webview: tauri::WebviewWindow,
 ) -> Result<(), AppError> {
-    ensure_config_context(&webview)?;
+    ensure_config_context(&app, &webview)?;
     let store = app
         .store(STORE_FILE)
         .map_err(|_| AppError::new(ErrorCode::ConfigOpenFailed))?;
@@ -301,7 +502,9 @@ pub fn clear_server_url(
     store.delete(AUTO_CONNECT_KEY);
     store
         .save()
-        .map_err(|_| AppError::new(ErrorCode::ConfigSaveFailed))
+        .map_err(|_| AppError::new(ErrorCode::ConfigSaveFailed))?;
+    reset_main_webview_session(&app, true);
+    Ok(())
 }
 
 #[tauri::command]
@@ -309,7 +512,7 @@ pub fn activate_app_window(
     app: tauri::AppHandle,
     webview: tauri::WebviewWindow,
 ) -> Result<(), String> {
-    ensure_config_context(&webview).map_err(|err| format!("{:?}", err.code))?;
+    ensure_config_context(&app, &webview).map_err(|err| format!("{:?}", err.code))?;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let main_window = app
@@ -327,6 +530,41 @@ pub fn activate_app_window(
         if let Some(config_window) = app.get_webview_window("config") {
             config_window.close().map_err(|error| error.to_string())?;
         }
+        Ok(())
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = app;
+        Err("mobile uses single webview navigation".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn open_config_window(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        if let Some(state) = app.try_state::<SecurityState>() {
+            state.record_page_load("config", CONFIG_VIEW_PATH);
+        }
+
+        if let Some(config_window) = app.get_webview_window("config") {
+            config_window.show().map_err(|err| err.to_string())?;
+            let _ = config_window.set_focus();
+            return Ok(());
+        }
+
+        let config_window = tauri::WebviewWindowBuilder::new(
+            &app,
+            "config",
+            tauri::WebviewUrl::App("config/config.html".into()),
+        )
+        .title("Configure Securo")
+        .inner_size(800.0, 600.0)
+        .visible(true)
+        .build()
+        .map_err(|err| err.to_string())?;
+
+        let _ = config_window.set_focus();
         Ok(())
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -382,6 +620,24 @@ mod tests {
         assert!(normalize_url("").is_err());
         assert!(normalize_url("   ").is_err());
         assert!(normalize_url("https://user:pass@example.com").is_err());
+    }
+
+    #[test]
+    fn test_normalize_url_rejects_query_strings_and_blocked_ports() {
+        let query_err = normalize_url("https://example.com?token=secret").unwrap_err();
+        assert_eq!(query_err.code, ErrorCode::InvalidUrl);
+
+        let api_query_err = normalize_url("http://localhost:8080/api?debug=1").unwrap_err();
+        assert_eq!(api_query_err.code, ErrorCode::InvalidUrl);
+
+        let ssh_port_err = normalize_url("http://192.168.1.10:22").unwrap_err();
+        assert_eq!(ssh_port_err.code, ErrorCode::InvalidUrl);
+
+        let redis_port_err = normalize_url("http://127.0.0.1:6379").unwrap_err();
+        assert_eq!(redis_port_err.code, ErrorCode::InvalidUrl);
+
+        let smtp_port_err = normalize_url("http://10.0.0.5:25").unwrap_err();
+        assert_eq!(smtp_port_err.code, ErrorCode::InvalidUrl);
     }
 
     #[test]
@@ -482,6 +738,65 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_config_access_blocks_pushstate_and_main_window_bypass() {
+        // Legitimate desktop config window
+        assert!(
+            validate_config_access(
+                false,
+                "config",
+                Some("/config/config.html"),
+                Some("/config/config.html")
+            )
+            .is_ok()
+        );
+
+        // Desktop "main" window attempting bypass (even if URL were /config/config.html)
+        assert_eq!(
+            validate_config_access(
+                false,
+                "main",
+                Some("/config/config.html"),
+                Some("/config/config.html")
+            )
+            .unwrap_err()
+            .code,
+            ErrorCode::ProxyForbidden
+        );
+
+        // Mobile XSS history.pushState(null, "", "/config/config.html") from /app.html
+        assert_eq!(
+            validate_config_access(true, "main", Some("/config/config.html"), Some("/app.html"))
+                .unwrap_err()
+                .code,
+            ErrorCode::ProxyForbidden
+        );
+
+        // Path suffix spoofing (/evil/config.html)
+        assert_eq!(
+            validate_config_access(
+                true,
+                "main",
+                Some("/evil/config.html"),
+                Some("/evil/config.html")
+            )
+            .unwrap_err()
+            .code,
+            ErrorCode::ProxyForbidden
+        );
+
+        // Legitimate mobile full-document navigation to /config/config.html
+        assert!(
+            validate_config_access(
+                true,
+                "main",
+                Some("/config/config.html"),
+                Some("/config/config.html")
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
     fn test_build_api_scope_entries_restricts_to_server_api_paths() {
         assert_eq!(
             build_api_scope_entries("https://securo.homelab.lan:8443/"),
@@ -509,8 +824,9 @@ mod tests {
 
     #[test]
     fn test_build_http_client_creation() {
-        assert!(build_http_client(false).is_ok());
-        assert!(build_http_client(true).is_ok());
+        let base = reqwest::Url::parse("https://securo.local").unwrap();
+        assert!(build_http_client(&base, false).is_ok());
+        assert!(build_http_client(&base, true).is_ok());
     }
 
     #[tokio::test]
@@ -530,15 +846,42 @@ mod tests {
             }
         });
 
-        let client = build_http_client(false).unwrap();
+        let base = reqwest::Url::parse(&format!("http://127.0.0.1:{port}")).unwrap();
+        let client = build_http_client(&base, false).unwrap();
         let test_url = format!("http://127.0.0.1:{port}/api/health");
         let result = probe_endpoint(&client, &test_url, false).await;
         assert_eq!(result, Ok(true));
     }
 
     #[tokio::test]
+    async fn test_probe_endpoint_blocks_cross_origin_redirect_and_hides_body() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = socket.read(&mut buf).await;
+                let response = "HTTP/1.1 302 Found\r\nLocation: http://169.254.169.254/latest/meta-data/\r\nContent-Length: 18\r\n\r\nSECRET_INTERNAL_DATA";
+                let _ = socket.write_all(response.as_bytes()).await;
+            }
+        });
+
+        let base = reqwest::Url::parse(&format!("http://127.0.0.1:{port}")).unwrap();
+        let client = build_http_client(&base, false).unwrap();
+        let test_url = format!("http://127.0.0.1:{port}/api/health");
+        let err = probe_endpoint(&client, &test_url, false).await.unwrap_err();
+        assert!(err.contains("HTTP response 302"));
+        assert!(!err.contains("SECRET_INTERNAL_DATA"));
+    }
+
+    #[tokio::test]
     async fn test_probe_endpoint_fails_on_unreachable_port() {
-        let client = build_http_client(false).unwrap();
+        let base = reqwest::Url::parse("http://127.0.0.1:59999").unwrap();
+        let client = build_http_client(&base, false).unwrap();
         let unreachable_url = "http://127.0.0.1:59999/api/health";
         let result = probe_endpoint(&client, unreachable_url, false).await;
         assert!(result.is_err());

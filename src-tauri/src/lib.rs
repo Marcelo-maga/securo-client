@@ -7,9 +7,20 @@ use tauri_plugin_store::StoreExt;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(commands::SecurityState::default())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .on_page_load(|webview, payload| {
+            if let Some(state) = webview.try_state::<commands::SecurityState>() {
+                state.record_page_load(webview.label(), payload.url().path());
+            }
+        })
         .setup(|app| {
+            if let Some(state) = app.try_state::<commands::SecurityState>() {
+                state.record_page_load("main", "/index.html");
+                state.record_page_load("config", "/config/config.html");
+            }
+
             let store = app.store("config.json").ok();
             let saved_server_url = store
                 .as_ref()
@@ -44,6 +55,7 @@ pub fn run() {
             commands::save_server_url,
             commands::clear_server_url,
             commands::activate_app_window,
+            commands::open_config_window,
             commands::set_auto_connect
         ])
         .run(tauri::generate_context!())
