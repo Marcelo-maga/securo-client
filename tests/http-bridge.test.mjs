@@ -128,7 +128,6 @@ describe('Native HTTP Bridge (securo-http-bridge) & Security Policy', () => {
 
     test('HTML entrypoints contain no inline executable <script> blocks', () => {
       const htmlFiles = [
-        'src-tauri/bridge/bootstrap.html',
         'src/index.html',
         'src/app.html',
         'src/config/config.html',

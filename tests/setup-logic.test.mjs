@@ -2,41 +2,13 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-
-// Extract pure functions and logic patterns from setup.js for robust unit testing
-function formatMessage(template, values = {}) {
-  return template.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
-}
-
-function getErrorMessage(error, copy) {
-  const code = error?.code || "UNKNOWN";
-  const template = copy.errors?.[code] || copy.errors?.UNKNOWN || "Erro de conexão";
-  return formatMessage(template, error);
-}
-
-function isCertError(detailsStr) {
-  const str = String(detailsStr || "").toLowerCase();
-  return (
-    str.includes("cert") ||
-    str.includes("ssl") ||
-    str.includes("tls") ||
-    str.includes("pkix") ||
-    str.includes("handshake")
-  );
-}
-
-function resolveAppTarget(pathname) {
-  return pathname.includes("/config/") ? "../app.html#/" : "app.html#/";
-}
-
-function resolveBootstrapTarget(serverUrl, autoConnect) {
-  const hasServer = Boolean(serverUrl && String(serverUrl).trim().length > 0);
-  const shouldAutoConnect = Boolean(autoConnect);
-  if (hasServer && shouldAutoConnect) {
-    return "app.html#/";
-  }
-  return "config/config.html";
-}
+import {
+  formatMessage,
+  getErrorMessage,
+  isCertError,
+  resolveAppTarget,
+  resolveBootstrapTarget,
+} from '../src/config/scripts/setup.js';
 
 describe('Setup UI Business Logic & Error Formatting', () => {
   const rootDir = process.cwd();

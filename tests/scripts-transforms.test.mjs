@@ -1,69 +1,14 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-
-// Isolated transform functions mirroring scripts/prepare-frontend.mjs & scripts/configure-android.mjs
-function patchRouter(appTsxContent) {
-  if (appTsxContent.includes('BrowserRouter')) {
-    return appTsxContent.replaceAll('BrowserRouter', 'HashRouter');
-  }
-  return appTsxContent;
-}
-
-function patchViteConfig(viteConfigContent) {
-  if (!viteConfigContent.includes('base: "./"')) {
-    return viteConfigContent.replace(/define:\s*\{/, 'base: "./",\n    define: {');
-  }
-  return viteConfigContent;
-}
-
-function injectMobileOverrides(mainTsxContent) {
-  if (!mainTsxContent.includes('mobile-overrides.css')) {
-    return mainTsxContent + '\nimport "./mobile-overrides.css";\n';
-  }
-  return mainTsxContent;
-}
-
-function patchOptionalChaining(code) {
-  let content = code;
-  content = content.replace(/(\.[a-zA-Z0-9_]+)\.find\(/g, '$1?.find(');
-  content = content.replace(/([a-zA-Z0-9_]+)\.current\.find\(/g, '$1.current?.find(');
-  content = content.replace(/([a-zA-Z0-9_]+)\.baseline\.find\(/g, '$1.baseline?.find(');
-  content = content.replace(/([a-zA-Z0-9_]+)\.days\.find\(/g, '$1.days?.find(');
-  content = content.replace(/([a-zA-Z0-9_]+)\.installments\.find\(/g, '$1.installments?.find(');
-  content = content.replace(/([a-zA-Z0-9_]+)\.assets\.find\(/g, '$1.assets?.find(');
-  content = content.replace(/([a-zA-Z0-9_]+)\.actions\.find\(/g, '$1.actions?.find(');
-  return content;
-}
-
-function configureStringsXml(xmlContent) {
-  let content = xmlContent;
-  content = content.replace(
-    /<string name="app_name">.*?<\/string>/,
-    '<string name="app_name">Securo</string>'
-  );
-  content = content.replace(
-    /<string name="main_activity_title">.*?<\/string>/,
-    '<string name="main_activity_title">Securo</string>'
-  );
-  return content;
-}
-
-function configureAndroidManifest(xmlContent) {
-  let manifest = xmlContent;
-  if (!manifest.includes('android.permission.ACCESS_NETWORK_STATE')) {
-    manifest = manifest.replace(
-      /(<uses-permission\s+android:name="android\.permission\.INTERNET"\s*\/>)/,
-      '$1\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />'
-    );
-  }
-  if (!manifest.includes('android:roundIcon=')) {
-    manifest = manifest.replace(
-      /(<application[\s\S]*?android:icon="@mipmap\/ic_launcher")/,
-      '$1\n        android:roundIcon="@mipmap/ic_launcher_round"'
-    );
-  }
-  return manifest;
-}
+import {
+  patchRouter,
+  patchViteConfig,
+  patchOptionalChaining,
+} from '../scripts/prepare-frontend.mjs';
+import {
+  configureStringsXml,
+  configureAndroidManifest,
+} from '../scripts/configure-android.mjs';
 
 describe('Frontend & Android Pipeline Code Transformations', () => {
   describe('Router Adaptation (BrowserRouter -> HashRouter)', () => {
@@ -180,7 +125,6 @@ const asset = portfolio.assets.find((ast) => ast.symbol === "BTC");
     </application>
 `;
       const reprocessed = configureAndroidManifest(alreadyConfigured);
-      // Ensure no duplicates
       const occurrences = (reprocessed.match(/ACCESS_NETWORK_STATE/g) || []).length;
       assert.equal(occurrences, 1);
     });
