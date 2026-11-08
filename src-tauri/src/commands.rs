@@ -1,7 +1,9 @@
 use reqwest::Client;
 use serde::Serialize;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Duration;
 use tauri::Manager;
+use tauri::ipc::CapabilityBuilder;
 use tauri_plugin_store::StoreExt;
 
 use crate::errors::{AppError, ErrorCode};
@@ -16,6 +18,56 @@ pub struct ConnectionSettings {
     pub server_url: Option<String>,
     pub allow_invalid_certs: bool,
     pub auto_connect: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HttpScopeEntry {
+    pub url: String,
+}
+
+pub fn build_api_scope_entries(normalized_server_url: &str) -> Vec<HttpScopeEntry> {
+    let base = normalized_server_url.trim_end_matches('/');
+    vec![
+        HttpScopeEntry {
+            url: format!("{base}/api"),
+        },
+        HttpScopeEntry {
+            url: format!("{base}/api/*"),
+        },
+    ]
+}
+
+pub fn grant_server_http_scope(app: &tauri::AppHandle, server_url: &str) -> Result<(), AppError> {
+    let normalized = normalize_url(server_url)?;
+    let allowed = build_api_scope_entries(&normalized);
+    let denied: Vec<HttpScopeEntry> = Vec::new();
+
+    let mut hasher = DefaultHasher::new();
+    normalized.hash(&mut hasher);
+    let cap_id = format!("securo-api-http-{:016x}", hasher.finish());
+
+    app.add_capability(
+        CapabilityBuilder::new(cap_id)
+            .window("main")
+            .permission_scoped("http:default", allowed, denied),
+    )
+    .map_err(|err| AppError::with_details(ErrorCode::HttpClientBuildFailed, err.to_string()))
+}
+
+fn ensure_config_context(webview: &tauri::WebviewWindow) -> Result<(), AppError> {
+    if webview.label() == "config" {
+        return Ok(());
+    }
+    if let Ok(current_url) = webview.url() {
+        let path = current_url.path();
+        if path.ends_with("/config/config.html") || path.ends_with("/config.html") {
+            return Ok(());
+        }
+    }
+    Err(AppError::with_details(
+        ErrorCode::ProxyForbidden,
+        "Server connection settings can only be modified from the configuration screen.",
+    ))
 }
 
 pub fn normalize_url(value: &str) -> Result<String, AppError> {
@@ -159,7 +211,12 @@ pub fn get_connection_settings(app: tauri::AppHandle) -> Result<ConnectionSettin
 }
 
 #[tauri::command]
-pub fn set_auto_connect(app: tauri::AppHandle, auto_connect: bool) -> Result<bool, AppError> {
+pub fn set_auto_connect(
+    app: tauri::AppHandle,
+    webview: tauri::WebviewWindow,
+    auto_connect: bool,
+) -> Result<bool, AppError> {
+    ensure_config_context(&webview)?;
     let store = app
         .store(STORE_FILE)
         .map_err(|_| AppError::new(ErrorCode::ConfigOpenFailed))?;
@@ -173,11 +230,14 @@ pub fn set_auto_connect(app: tauri::AppHandle, auto_connect: bool) -> Result<boo
 #[tauri::command]
 pub fn save_server_url(
     app: tauri::AppHandle,
+    webview: tauri::WebviewWindow,
     server_url: String,
     allow_invalid_certs: bool,
     auto_connect: Option<bool>,
 ) -> Result<String, AppError> {
+    ensure_config_context(&webview)?;
     let normalized_url = normalize_url(&server_url)?;
+    grant_server_http_scope(&app, &normalized_url)?;
     save_config(&app, &normalized_url, allow_invalid_certs, auto_connect)?;
     Ok(normalized_url)
 }
@@ -185,10 +245,12 @@ pub fn save_server_url(
 #[tauri::command]
 pub async fn connect_server(
     app: tauri::AppHandle,
+    webview: tauri::WebviewWindow,
     server_url: String,
     allow_invalid_certs: bool,
     auto_connect: Option<bool>,
 ) -> Result<String, AppError> {
+    ensure_config_context(&webview)?;
     let normalized_url = normalize_url(&server_url)?;
     let client = build_http_client(allow_invalid_certs)?;
 
@@ -220,12 +282,17 @@ pub async fn connect_server(
         ));
     }
 
+    grant_server_http_scope(&app, &normalized_url)?;
     save_config(&app, &normalized_url, allow_invalid_certs, auto_connect)?;
     Ok(normalized_url)
 }
 
 #[tauri::command]
-pub fn clear_server_url(app: tauri::AppHandle) -> Result<(), AppError> {
+pub fn clear_server_url(
+    app: tauri::AppHandle,
+    webview: tauri::WebviewWindow,
+) -> Result<(), AppError> {
+    ensure_config_context(&webview)?;
     let store = app
         .store(STORE_FILE)
         .map_err(|_| AppError::new(ErrorCode::ConfigOpenFailed))?;
@@ -238,15 +305,24 @@ pub fn clear_server_url(app: tauri::AppHandle) -> Result<(), AppError> {
 }
 
 #[tauri::command]
-pub fn activate_app_window(app: tauri::AppHandle) -> Result<(), String> {
+pub fn activate_app_window(
+    app: tauri::AppHandle,
+    webview: tauri::WebviewWindow,
+) -> Result<(), String> {
+    ensure_config_context(&webview).map_err(|err| format!("{:?}", err.code))?;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let main_window = app
             .get_webview_window("main")
             .ok_or_else(|| "Main window is not available".to_string())?;
-        let _ = main_window.eval(
-            "if (window.location.pathname.includes('config')) { window.location.replace('../app.html#/'); } else if (!window.location.pathname.includes('app.html')) { window.location.replace('app.html#/'); }"
-        );
+        if let Ok(mut target_url) = main_window.url()
+            && !target_url.path().ends_with("/app.html")
+        {
+            target_url.set_path("/app.html");
+            target_url.set_query(None);
+            target_url.set_fragment(Some("/"));
+            let _ = main_window.navigate(target_url);
+        }
         main_window.show().map_err(|error| error.to_string())?;
         if let Some(config_window) = app.get_webview_window("config") {
             config_window.close().map_err(|error| error.to_string())?;
@@ -307,8 +383,6 @@ mod tests {
         assert!(normalize_url("   ").is_err());
         assert!(normalize_url("https://user:pass@example.com").is_err());
     }
-
-    // --- NEW RIGOROUS QA TEST SUITE (Ensuring zero regressions and strict contracts) ---
 
     #[test]
     fn test_normalize_url_ip_addresses_and_custom_ports() {
@@ -408,6 +482,32 @@ mod tests {
     }
 
     #[test]
+    fn test_build_api_scope_entries_restricts_to_server_api_paths() {
+        assert_eq!(
+            build_api_scope_entries("https://securo.homelab.lan:8443/"),
+            vec![
+                HttpScopeEntry {
+                    url: "https://securo.homelab.lan:8443/api".to_string()
+                },
+                HttpScopeEntry {
+                    url: "https://securo.homelab.lan:8443/api/*".to_string()
+                },
+            ]
+        );
+        assert_eq!(
+            build_api_scope_entries("https://my-domain.com/finance"),
+            vec![
+                HttpScopeEntry {
+                    url: "https://my-domain.com/finance/api".to_string()
+                },
+                HttpScopeEntry {
+                    url: "https://my-domain.com/finance/api/*".to_string()
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn test_build_http_client_creation() {
         assert!(build_http_client(false).is_ok());
         assert!(build_http_client(true).is_ok());
@@ -421,7 +521,6 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
 
-        // Spawn a lightweight one-shot HTTP mock responder
         tokio::spawn(async move {
             if let Ok((mut socket, _)) = listener.accept().await {
                 let mut buf = [0u8; 1024];
@@ -440,7 +539,6 @@ mod tests {
     #[tokio::test]
     async fn test_probe_endpoint_fails_on_unreachable_port() {
         let client = build_http_client(false).unwrap();
-        // A port that is virtually guaranteed not to be listening
         let unreachable_url = "http://127.0.0.1:59999/api/health";
         let result = probe_endpoint(&client, unreachable_url, false).await;
         assert!(result.is_err());

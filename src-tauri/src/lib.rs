@@ -10,20 +10,24 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
+            let store = app.store("config.json").ok();
+            let saved_server_url = store
+                .as_ref()
+                .and_then(|s| s.get("server_url"))
+                .and_then(|value| value.as_str().map(str::to_owned));
+
+            if let Some(ref server_url) = saved_server_url {
+                let _ = commands::grant_server_http_scope(app.handle(), server_url);
+            }
+
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                let store = app.store("config.json").ok();
-                let has_server = store
-                    .as_ref()
-                    .and_then(|s| s.get("server_url"))
-                    .and_then(|value| value.as_str().map(str::to_owned))
-                    .is_some();
                 let auto_connect = store
                     .as_ref()
                     .and_then(|s| s.get("auto_connect"))
                     .and_then(|value| value.as_bool())
                     .unwrap_or(false);
-                let target = if has_server && auto_connect {
+                let target = if saved_server_url.is_some() && auto_connect {
                     "main"
                 } else {
                     "config"
@@ -31,10 +35,6 @@ pub fn run() {
                 if let Some(window) = app.get_webview_window(target) {
                     window.show()?;
                 }
-            }
-            #[cfg(any(target_os = "android", target_os = "ios"))]
-            {
-                let _ = app;
             }
             Ok(())
         })

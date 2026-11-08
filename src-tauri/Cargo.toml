@@ -19,10 +19,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-http = { version = "2", features = ["dangerous-settings"] }
+tauri = { version = "2.12", features = ["dynamic-acl"] }
+tauri-plugin-http = { version = "2", features = ["dangerous-settings", "rustls-tls-native-roots"] }
 tauri-plugin-store = "2"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "http2"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

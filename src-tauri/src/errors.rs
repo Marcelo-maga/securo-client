@@ -12,6 +12,7 @@ pub enum ErrorCode {
     #[allow(dead_code)]
     ServerHttpError,
     ConfigSaveFailed,
+    ProxyForbidden,
 }
 
 #[derive(Debug, Serialize)]
@@ -87,6 +88,10 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&ErrorCode::ConfigSaveFailed).unwrap(),
             "\"CONFIG_SAVE_FAILED\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ErrorCode::ProxyForbidden).unwrap(),
+            "\"PROXY_FORBIDDEN\""
         );
     }
 
