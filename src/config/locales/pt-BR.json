@@ -18,6 +18,8 @@
   "copy": "Copiar",
   "copied": "Copiado!",
   "certSelfSignedEnabled": "(Certificado autoassinado ativado)",
+  "certUntrustedHint": "O certificado TLS não pôde ser verificado. Prefira instalar a CA no sistema operacional ou marque manualmente o uso de certificado autoassinado apenas em redes confiáveis.",
+  "cleartextHttpNotice": "Aviso: conexões http:// trafegam dados financeiros sem criptografia. Prefira https:// sempre que possível.",
   "tauriUnavailable": "A API do Tauri não está disponível.",
   "connectionError": "Erro de conexão",
   "errors": {

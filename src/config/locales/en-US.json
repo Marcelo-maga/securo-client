@@ -18,6 +18,8 @@
   "copy": "Copy",
   "copied": "Copied!",
   "certSelfSignedEnabled": "(Self-signed certificate enabled)",
+  "certUntrustedHint": "TLS certificate could not be verified. Prefer installing your CA in the OS trust store, or manually enable self-signed certificates only on a trusted network.",
+  "cleartextHttpNotice": "Warning: http:// transmits financial data without encryption. Use https:// whenever possible.",
   "tauriUnavailable": "Tauri API is not available.",
   "connectionError": "Connection error",
   "errors": {
