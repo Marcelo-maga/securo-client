@@ -10,7 +10,13 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
   function getSettings() {
     const invoke = getInvoke();
     if (!invoke) return Promise.resolve(null);
-    return (settingsPromise ??= invoke("get_connection_settings"));
+    if (!settingsPromise) {
+      settingsPromise = invoke("get_connection_settings").catch((error) => {
+        settingsPromise = null;
+        throw error;
+      });
+    }
+    return settingsPromise;
   }
 
   function isApiRequest(input) {
@@ -128,7 +134,7 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
     open(method, url, async = true, user, password) {
       this._method = method;
       this._url = url;
-      this._apiRequest = typeof url === "string" && (url.startsWith("/api") || url.startsWith("api/"));
+      this._apiRequest = isApiRequest(url);
       if (!this._apiRequest) return this._browserXhr.open(method, url, async, user, password);
       this._state = 1;
       this._emit("readystatechange");
@@ -162,7 +168,7 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
     async send(body = null) {
       const settings = await getSettings();
       const serverUrl = settings?.server_url || settings?.serverUrl;
-      if (isApiRequest(this._url, serverUrl)) {
+      if (isApiRequest(this._url)) {
         this._apiRequest = true;
         this._sendThroughTauri(body, settings, serverUrl);
       } else {
@@ -173,7 +179,7 @@ import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
 
     async _sendThroughTauri(body, settings, serverUrl) {
       const targetUrl = serverUrl && getApiUrl(this._url, serverUrl);
-      if (!targetUrl) return this._fail(new Error("Nenhum servidor Securo está configurado."));
+      if (!targetUrl) return this._fail(new Error("No Securo server is configured."));
 
       this._controller = new AbortController();
       if (this.timeout > 0) this._timer = setTimeout(() => this._controller.abort(), this.timeout);

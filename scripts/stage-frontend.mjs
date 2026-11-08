@@ -57,31 +57,41 @@ execSync(`npx esbuild "${path.join(BRIDGE_DIR, 'http-bridge.js')}" --bundle --fo
   stdio: 'inherit',
 });
 
-// 7. Inject error boundary script, CSS override and HTTP bridge into app.html
+// 7. Inject safe DOM error boundary script, CSS override and HTTP bridge into app.html
 if (fs.existsSync(appHtml)) {
   let html = fs.readFileSync(appHtml, 'utf8');
 
   const errorAndBridgeSnippet = `<script>
-window.addEventListener("error", function(e) {
-  var b = document.getElementById("securo-err");
-  if (!b) {
-    b = document.createElement("div");
-    b.id = "securo-err";
-    b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:999999;background:#b91c1c;color:#fff;padding:12px;font-family:monospace;font-size:12px;word-break:break-all;max-height:50vh;overflow:auto;";
-    (document.body || document.documentElement).appendChild(b);
+(function() {
+  function reportRuntimeError(label, detail) {
+    var b = document.getElementById("securo-err");
+    if (!b) {
+      b = document.createElement("div");
+      b.id = "securo-err";
+      b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:999999;background:#b91c1c;color:#fff;padding:12px 36px 12px 12px;font-family:monospace;font-size:12px;word-break:break-all;max-height:50vh;overflow:auto;";
+      var closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.textContent = "\\u00d7";
+      closeBtn.setAttribute("aria-label", "Dismiss error");
+      closeBtn.style.cssText = "position:absolute;top:6px;right:8px;background:transparent;border:none;color:#fff;font-size:18px;line-height:1;cursor:pointer;padding:4px;";
+      closeBtn.onclick = function() { b.remove(); };
+      b.appendChild(closeBtn);
+      (document.body || document.documentElement).appendChild(b);
+    }
+    var row = document.createElement("div");
+    var strong = document.createElement("b");
+    strong.textContent = label + ": ";
+    row.appendChild(strong);
+    row.appendChild(document.createTextNode(String(detail)));
+    b.appendChild(row);
   }
-  b.innerHTML += "<b>JS Error:</b> " + (e.message || e.error || e) + "<br/>";
-});
-window.addEventListener("unhandledrejection", function(e) {
-  var b = document.getElementById("securo-err");
-  if (!b) {
-    b = document.createElement("div");
-    b.id = "securo-err";
-    b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:999999;background:#b91c1c;color:#fff;padding:12px;font-family:monospace;font-size:12px;word-break:break-all;max-height:50vh;overflow:auto;";
-    (document.body || document.documentElement).appendChild(b);
-  }
-  b.innerHTML += "<b>Promise Error:</b> " + (e.reason?.message || e.reason || e) + "<br/>";
-});
+  window.addEventListener("error", function(e) {
+    reportRuntimeError("JS Error", e.message || e.error || e);
+  });
+  window.addEventListener("unhandledrejection", function(e) {
+    reportRuntimeError("Promise Error", (e.reason && e.reason.message) || e.reason || e);
+  });
+})();
 </script>
 <link rel="stylesheet" href="./mobile-overrides.css">
 <script src="./securo-http-bridge.js"></script>`;
