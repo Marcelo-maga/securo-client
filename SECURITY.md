@@ -41,7 +41,7 @@ The Securo Client maintainers take security seriously. If you discover a securit
 To help us investigate and triage effectively, please include:
 - A clear description of the vulnerability.
 - Steps to reproduce the issue (proof-of-concept code, requests, or screenshots).
-- The platform affected (Android architecture, Windows version, etc.).
+- The platform affected (Windows/Linux/macOS version, Android architecture, etc.).
 - The potential security impact on the user or the self-hosted Securo server.
 
 ### What to Expect
