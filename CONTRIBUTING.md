@@ -152,8 +152,10 @@ We adhere to the [Conventional Commits](https://www.conventionalcommits.org/) st
    git checkout -b feature/my-new-feature
    ```
 2. **Make your changes:** Keep changes focused and atomic.
-3. **Test locally:** Ensure the CI validation script passes:
+3. **Test locally:** Ensure test suites and frontend staging pass:
    ```bash
+   npm test
+   npm run test:rust
    npm run frontend:prepare
    npm run frontend:stage
    ```

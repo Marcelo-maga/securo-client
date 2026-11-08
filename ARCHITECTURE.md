@@ -100,7 +100,7 @@ The frontend pipeline enables `securo-mobile` to stay continuously up-to-date wi
 
 ```mermaid
 flowchart LR
-    A["securo-finance/securo\n(GitHub Main Branch)"] -->|"Sparse Clone"| B[".securo-frontend"]
+    A["securo-finance/securo\n(GitHub Upstream)"] -->|"Sparse Clone"| B[".securo-frontend"]
     B -->|"Transform Router"| C["HashRouter Adaptation"]
     C -->|"Patch Runtime"| D["Optional Chaining Patches"]
     D -->|"Inject Styles"| E["mobile-overrides.css"]
@@ -109,7 +109,7 @@ flowchart LR
 ```
 
 ### 1. `prepare-frontend.mjs`
-- Performs a sparse clone (`--filter=blob:none --sparse`) of the official Securo repository, pulling only the `frontend/` directory to save bandwidth and disk space.
+- Performs a sparse clone (`--filter=blob:none --sparse`) of the official Securo repository (supporting optional ref pinning via `SECURO_REF`), pulling only the `frontend/` directory to save bandwidth and disk space.
 - Replaces `BrowserRouter` with `HashRouter` inside `App.tsx`.
   > *Why HashRouter?* Mobile and desktop WebViews load local assets via relative file protocols or virtual origins (`http://tauri.localhost`). Using HTML5 history API navigation results in 404 errors when deep-linking or refreshing the view. Hash routing (`/#/accounts`) guarantees route persistence.
 - Adjusts Vite configuration (`base: "./"`) so all compiled JS/CSS script tags resolve relative to the WebView asset root.
@@ -119,7 +119,7 @@ flowchart LR
 - Archives the local fallback configuration screen (`src/config/`).
 - Populates `src/` with the compiled Vite production bundle.
 - Uses `esbuild` to compile `src-tauri/bridge/http-bridge.js` into an optimized single-file IIFE bundle (`securo-http-bridge.js`).
-- Injects a resilient JavaScript error boundary, safe-area viewport configurations (`viewport-fit=cover`), and the bridge script into the HTML header.
+- Injects a resilient DOM-safe JavaScript error boundary, safe-area viewport configurations (`viewport-fit=cover`), and the bridge script into the HTML header.
 
 ---
 
@@ -129,9 +129,9 @@ flowchart LR
 Modern Android devices feature edge-to-edge screens with camera punch-holes, curved corners, and dynamic gesture navigation bars. Rather than applying native padding on Android's root view (which creates unstyled letterboxing), edge-to-edge rendering allows the WebView to span the entire display. The web layout then respects device cutouts dynamically through standard CSS safe-area insets (`env(safe-area-inset-top)`, `env(safe-area-inset-bottom)`) defined in `mobile-overrides.css`.
 
 ### Windows Native Runtime & Window Management
-On Windows, Tauri utilizes the evergreen Microsoft Edge WebView2 runtime. In `lib.rs`, the application checks whether a valid `server_url` has already been saved in local storage:
-- If a server URL exists, the main dashboard window (`main`) is presented immediately.
-- If unconfigured, the window loads the dedicated server configuration screen (`config`), guiding the user through initial instance pairing before seamlessly switching to the financial dashboard.
+On Windows, Tauri utilizes the evergreen Microsoft Edge WebView2 runtime. In `lib.rs`, the application checks whether a valid `server_url` and `auto_connect` preference have already been saved in local storage:
+- If a server URL exists and `auto_connect` is enabled, the main dashboard window (`main`) is presented immediately.
+- Otherwise, the window loads the dedicated server configuration screen (`config`), guiding the user through initial instance pairing before seamlessly switching to the financial dashboard.
 
 ---
 
@@ -174,33 +174,37 @@ All outputs are staged in `artifacts/` alongside a consolidated `SHA256SUMS.txt`
 
 ## 8. Release Pipeline Architecture (`.github/workflows/release.yml`)
 
+To avoid redundant network clones and frontend compilations across runners, the release workflow builds and stages the web bundle **once** on Linux (`prepare-frontend`) and distributes the immutable `staged-frontend` artifact to all native platform runners:
+
 ```mermaid
 flowchart TD
     Trigger["Release Trigger\n(Tag v* or workflow_dispatch)"]
 
-    subgraph BuildJobs["Parallel Platform Build Matrix"]
-        WindowsJob["windows Job\n(windows-latest)\n- npm ci & setup-node\n- rust-cache & rust-toolchain\n- tauri build\n- NSIS .exe & MSI"]
-        AndroidJob["android Job\n(ubuntu-22.04)\n- Java 17 & Android SDK\n- Gradle cache\n- tauri android build\n- Signed APK"]
-        MacOSJob["macos Job (Future)\n(macos-latest)\n- Universal DMG"]
-        LinuxJob["linux Job (Future)\n(ubuntu-22.04)\n- DEB & AppImage"]
+    subgraph Stage0["Stage 0: Shared Frontend Build (Once)"]
+        PrepJob["prepare-frontend\n(ubuntu-latest)\n- Sparse clone securo\n- Vite build + stage-frontend\n- Upload staged-frontend (src/)"]
     end
 
-    subgraph PublishJob["Consolidation & Distribution"]
-        UploadWin["Upload Artifacts\nsecuro-desktop-windows"]
-        UploadAnd["Upload Artifacts\nsecuro-android-*"]
-        DownloadAll["Download All Platform Artifacts\n(actions/download-artifact@v4)"]
+    subgraph BuildJobs["Stage 1: Parallel Native Platform Compilation"]
+        WindowsJob["windows Job\n(windows-latest)\n- Download staged-frontend\n- rust-cache (windows-x64)\n- tauri build (NSIS .exe & MSI)"]
+        AndroidJob["android Matrix\n(ubuntu-22.04 × aarch64 / armv7 / x86_64)\n- Download staged-frontend\n- rust-cache per arch & Gradle cache\n- tauri android build & apksigner"]
+        MacOSJob["macos Job (Future)\n(macos-latest)\n- Download staged-frontend\n- Universal DMG"]
+        LinuxJob["linux Job (Future)\n(ubuntu-22.04)\n- Download staged-frontend\n- DEB & AppImage"]
+    end
+
+    subgraph PublishJob["Stage 2: Consolidation & Distribution"]
+        DownloadAll["Download Platform Artifacts\n(pattern: securo-*)"]
         ConsolidateSums["Consolidate SHA256SUMS.txt"]
         GhRelease["softprops/action-gh-release@v2\n(Single Unified GitHub Release)"]
     end
 
-    Trigger --> WindowsJob
-    Trigger --> AndroidJob
+    Trigger --> PrepJob
+    PrepJob --> WindowsJob
+    PrepJob --> AndroidJob
+    PrepJob -.-> MacOSJob
+    PrepJob -.-> LinuxJob
 
-    WindowsJob --> UploadWin
-    AndroidJob --> UploadAnd
-
-    UploadWin --> DownloadAll
-    UploadAnd --> DownloadAll
+    WindowsJob --> DownloadAll
+    AndroidJob --> DownloadAll
 
     DownloadAll --> ConsolidateSums
     ConsolidateSums --> GhRelease

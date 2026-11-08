@@ -66,7 +66,7 @@ flowchart TD
 
         subgraph RustCore["Rust Core Runtime (Tauri IPC)"]
             PluginHttp["tauri-plugin-http\n(Reqwest + Rustls TLS)"]
-            Store["tauri-plugin-store\n(Encrypted Local Configuration)"]
+            Store["tauri-plugin-store\n(Persistent Local Configuration)"]
             Bridge -->|"IPC invoke"| PluginHttp
             Bridge -->|"Read config"| Store
         end
@@ -124,37 +124,6 @@ npm run tauri -- android build --target aarch64 --debug --apk
 # Package & generate SHA-256 checksums in artifacts/
 npm run artifacts:package
 ```
-
----
-
-## Troubleshooting
-
-<details>
-<summary><b>1. Connection failed: "SERVER_UNREACHABLE"</b></summary>
-
-- Ensure your Securo server is running and reachable from your mobile network (same Wi-Fi or active VPN).
-- If using an internal/self-signed SSL certificate, enable **"Allow self-signed certificate"** in the server setup screen.
-- Verify the protocol and port (e.g. `http://192.168.1.50:8080`).
-- Tap **Copy** in the error dialog to view exact probe details (`/api/health`, `/health`, `/`).
-</details>
-
-<details>
-<summary><b>2. Blank / White screen on startup</b></summary>
-
-- Re-run `npm run frontend:prepare` and `npm run frontend:stage`.
-- Mobile WebViews require `HashRouter` routing; standard browser history routing fails inside sandboxed local file schemas.
-</details>
-
-<details>
-<summary><b>3. Missing Android SDK / NDK during build</b></summary>
-
-Set your environment variables:
-```bash
-export ANDROID_HOME=$HOME/Android/Sdk
-export NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973
-export PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin
-```
-</details>
 
 ---
 
