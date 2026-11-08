@@ -18,10 +18,34 @@ describe('Native HTTP Bridge (securo-http-bridge) & Security Policy', () => {
       assert.equal(isApiRequest('/api/budget?month=2026-11', 'http://localhost:1420/'), true);
     });
 
-    test('identifies absolute URLs targeting /api endpoints', () => {
+    test('identifies absolute URLs matching current origin or configured serverUrl', () => {
       assert.equal(isApiRequest('http://localhost:1420/api/reports', 'http://localhost:1420/'), true);
-      assert.equal(isApiRequest('https://securo.internal/api/v1/auth', 'http://localhost:1420/'), true);
-      assert.equal(isApiRequest('http://127.0.0.1:8080/api', 'http://localhost:1420/'), true);
+      assert.equal(
+        isApiRequest('https://securo.internal/api/v1/auth', 'http://localhost:1420/', 'https://securo.internal'),
+        true
+      );
+      assert.equal(
+        isApiRequest('http://127.0.0.1:8080/api', 'http://localhost:1420/', 'http://127.0.0.1:8080'),
+        true
+      );
+    });
+
+    test('rejects cross-origin third-party /api URLs that do not match serverUrl', () => {
+      assert.equal(
+        isApiRequest('https://attacker.example/api/v1/exfil', 'http://localhost:1420/', 'https://securo.internal'),
+        false
+      );
+      assert.equal(
+        isApiRequest('https://thirdparty.cdn.org/api/status', 'http://tauri.localhost/'),
+        false
+      );
+    });
+
+    test('rejects path-traversal dot segments (/api/../ and %2e%2e)', () => {
+      assert.equal(isApiRequest('/api/../admin/debug', 'http://localhost:1420/'), false);
+      assert.equal(isApiRequest('/api/..', 'http://localhost:1420/'), false);
+      assert.equal(isApiRequest('/api/%2e%2e/admin', 'http://localhost:1420/'), false);
+      assert.equal(isApiRequest('/api/%2E%2E%2Fmetrics', 'http://localhost:1420/'), false);
     });
 
     test('identifies Request objects with API url property', () => {
@@ -76,6 +100,14 @@ describe('Native HTTP Bridge (securo-http-bridge) & Security Policy', () => {
       assert.equal(getApiUrl('/finance/api/accounts', subpathServer), 'https://my-domain.com/finance/api/accounts');
     });
 
+    test('blocks traversal attempts and foreign origins from being rewritten to serverUrl', () => {
+      assert.equal(getApiUrl('/api/../admin/export', server), null);
+      assert.equal(getApiUrl('/api/%2e%2e/admin/export', server), null);
+      assert.equal(getApiUrl('https://evil.example/api/accounts', server), null);
+      const subpathServer = 'https://my-domain.com/finance';
+      assert.equal(getApiUrl('/api/../../admin', subpathServer), null);
+    });
+
     test('works with IP addresses and standard HTTP ports', () => {
       const ipServer = 'http://192.168.1.150:8000';
       assert.equal(getApiUrl('/api/health', ipServer), 'http://192.168.1.150:8000/api/health');
@@ -102,28 +134,47 @@ describe('Native HTTP Bridge (securo-http-bridge) & Security Policy', () => {
     });
   });
 
-  describe('Tauri Security Configuration Invariants (CSP, Capabilities & Inline Scripts)', () => {
+  describe('Tauri Security Configuration Invariants (CSP, Capabilities & Hardening)', () => {
     const rootDir = process.cwd();
 
-    test('capabilities/default.json does NOT expose static wildcard HTTP permissions', () => {
+    test('capabilities/default.json enforces least privilege without wildcard windows or core:default', () => {
       const cap = JSON.parse(
         fs.readFileSync(path.resolve(rootDir, 'src-tauri/capabilities/default.json'), 'utf8')
       );
       const serialized = JSON.stringify(cap);
       assert.ok(!serialized.includes('http://*'), 'wildcard http://* must not exist in static capabilities');
       assert.ok(!serialized.includes('https://*'), 'wildcard https://* must not exist in static capabilities');
+      assert.ok(!cap.windows.includes('*'), 'capabilities must not target wildcard "*" windows');
+      assert.deepEqual(cap.windows, ['main', 'config']);
+      assert.ok(!cap.permissions.includes('core:default'), 'overly broad core:default must not be granted');
+      assert.ok(cap.permissions.includes('core:resources:default'), 'core:resources:default is required for HTTP body streams');
     });
 
-    test("tauri.conf.json enforces a non-null CSP with script-src 'self' and restricted connect-src", () => {
+    test('tauri.conf.json enforces hardened CSP, withGlobalTauri=false, scopeRedirects=true, and non-fallback build', () => {
       const conf = JSON.parse(
         fs.readFileSync(path.resolve(rootDir, 'src-tauri/tauri.conf.json'), 'utf8')
       );
+      assert.equal(conf?.app?.withGlobalTauri, false, 'withGlobalTauri must be disabled');
+      assert.equal(conf?.plugins?.http?.scopeRedirects, true, 'plugins.http.scopeRedirects must be true');
+      assert.ok(
+        !String(conf?.build?.beforeBuildCommand || '').includes('--allow-fallback'),
+        'production beforeBuildCommand must not pass --allow-fallback'
+      );
+
       const csp = conf?.app?.security?.csp;
       assert.equal(typeof csp, 'string', 'CSP must be explicitly configured');
       assert.ok(csp.includes("default-src 'self'"), 'CSP must restrict default-src');
       assert.ok(csp.includes("script-src 'self'"), 'CSP must restrict script-src without unsafe-inline');
+      assert.ok(csp.includes("form-action 'self'"), 'CSP must restrict form-action');
+      assert.ok(csp.includes("frame-src 'none'"), 'CSP must forbid child frames');
       assert.ok(!csp.includes("'unsafe-eval'"), 'CSP must not allow unsafe-eval');
       assert.ok(csp.includes('connect-src'), 'CSP must define connect-src');
+    });
+
+    test('Cargo.toml does not enable production devtools or duplicate reqwest crates', () => {
+      const cargoToml = fs.readFileSync(path.resolve(rootDir, 'src-tauri/Cargo.toml'), 'utf8');
+      assert.ok(!cargoToml.includes('"devtools"'), 'production Tauri devtools feature must not be enabled');
+      assert.ok(!/^reqwest\s*=/m.test(cargoToml), 'standalone reqwest crate must not duplicate tauri-plugin-http reqwest');
     });
 
     test('HTML entrypoints contain no inline executable <script> blocks', () => {

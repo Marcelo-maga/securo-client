@@ -1,5 +1,12 @@
 const isNode = typeof window === "undefined";
-const invoke = !isNode ? window.__TAURI__?.core?.invoke : undefined;
+if (!isNode && window.top !== window.self) {
+  throw new Error("Configuration view cannot be embedded inside a frame.");
+}
+
+const rawInvoke = !isNode
+  ? window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke
+  : undefined;
+const invoke = rawInvoke ? (cmd, args = {}) => rawInvoke(cmd, args) : undefined;
 const isPortuguese = Boolean(
   !isNode && navigator.language && navigator.language.toLowerCase().startsWith("pt")
 );
@@ -25,8 +32,21 @@ export function isCertError(detailsStr) {
     str.includes("ssl") ||
     str.includes("tls") ||
     str.includes("pkix") ||
-    str.includes("handshake")
+    str.includes("unknown issuer") ||
+    str.includes("self signed")
   );
+}
+
+export function isInsecureRemoteHttp(rawUrl) {
+  const trimmed = String(rawUrl || "").trim();
+  if (!trimmed.toLowerCase().startsWith("http://")) return false;
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase();
+    return host !== "localhost" && host !== "127.0.0.1" && host !== "[::1]" && host !== "::1";
+  } catch {
+    return false;
+  }
 }
 
 export function resolveAppTarget(pathname) {
@@ -210,9 +230,9 @@ if (typeof document !== "undefined" && document.querySelector("#server-form")) {
         const errMsg = errorMessage(error);
         const detailsStr = String(error?.details || "");
         if (isCertError(detailsStr) && !certificateCheckbox.checked) {
-          certificateCheckbox.checked = true;
-          const certNotice = copy.certSelfSignedEnabled ? ` ${copy.certSelfSignedEnabled}` : "";
-          setStatus(`${errMsg}${certNotice}`, "error");
+          // Never auto-enable allow_invalid_certs: require deliberate manual opt-in to prevent MitM downgrade traps
+          const certHint = copy.certUntrustedHint ? ` ${copy.certUntrustedHint}` : "";
+          setStatus(`${errMsg}${certHint}`, "error");
         } else {
           setStatus(errMsg, "error");
         }
@@ -295,6 +315,15 @@ if (typeof document !== "undefined" && document.querySelector("#server-form")) {
     input.addEventListener("input", () => {
       if (forceConnectButton) forceConnectButton.classList.add("hidden");
       if (errorContainer) errorContainer.classList.add("hidden");
+      if (isInsecureRemoteHttp(input.value)) {
+        setStatus(
+          copy.cleartextHttpNotice ||
+            "Warning: http:// transmits financial data without encryption.",
+          "error"
+        );
+      } else {
+        setStatus();
+      }
     });
     if (connectConfiguredButton) connectConfiguredButton.addEventListener("click", connectConfigured);
     if (autoConnectCheckbox) autoConnectCheckbox.addEventListener("change", handleAutoConnectChange);

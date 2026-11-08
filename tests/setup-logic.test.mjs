@@ -6,6 +6,7 @@ import {
   formatMessage,
   getErrorMessage,
   isCertError,
+  isInsecureRemoteHttp,
   resolveAppTarget,
   resolveBootstrapTarget,
 } from '../src/config/scripts/setup.js';
@@ -85,7 +86,6 @@ describe('Setup UI Business Logic & Error Formatting', () => {
         'TLS handshake failed: unknown issuer',
         'javax.net.ssl.SSLHandshakeException: java.security.cert.CertPathValidatorException',
         'PKIX path building failed: unable to find valid certification path',
-        'handshake error: ConnectionReset',
         'CERT_UNTRUSTED from reqwest rustls engine',
       ];
 
@@ -98,8 +98,9 @@ describe('Setup UI Business Logic & Error Formatting', () => {
       }
     });
 
-    test('does not trigger on unrelated network or server errors', () => {
+    test('does not trigger on non-TLS handshake resets or unrelated network errors', () => {
       const negativeCases = [
+        'handshake error: ConnectionReset',
         'Connection refused (os error 111)',
         'HTTP 404 Not Found',
         'DNS resolution failed for hostname invalid.domain.xyz',
@@ -117,6 +118,33 @@ describe('Setup UI Business Logic & Error Formatting', () => {
           `Should NOT falsely flag as cert error: "${nonCertStr}"`
         );
       }
+    });
+
+    test('setup.js never auto-checks the allow-invalid-certs checkbox without user action', () => {
+      const setupJsSource = fs.readFileSync(
+        path.resolve(rootDir, 'src/config/scripts/setup.js'),
+        'utf8'
+      );
+      assert.ok(
+        !/certificateCheckbox\.checked\s*=\s*true/.test(setupJsSource),
+        'setup.js must never silently enable certificateCheckbox.checked = true'
+      );
+    });
+  });
+
+  describe('isInsecureRemoteHttp() Cleartext Transport Warning', () => {
+    test('flags non-loopback http:// URLs as insecure remote HTTP', () => {
+      assert.equal(isInsecureRemoteHttp('http://192.168.1.50:8080'), true);
+      assert.equal(isInsecureRemoteHttp('http://securo.homelab.lan'), true);
+      assert.equal(isInsecureRemoteHttp('http://100.64.0.10:3000'), true);
+    });
+
+    test('allows https:// and loopback http:// without warning', () => {
+      assert.equal(isInsecureRemoteHttp('https://securo.homelab.lan'), false);
+      assert.equal(isInsecureRemoteHttp('http://localhost:8080'), false);
+      assert.equal(isInsecureRemoteHttp('http://127.0.0.1:8080'), false);
+      assert.equal(isInsecureRemoteHttp('http://[::1]:8080'), false);
+      assert.equal(isInsecureRemoteHttp(''), false);
     });
   });
 

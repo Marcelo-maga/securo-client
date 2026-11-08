@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -30,6 +31,17 @@ export function configureAndroidManifest(xmlContent) {
       '$1\n        android:roundIcon="@mipmap/ic_launcher_round"'
     );
   }
+
+  // Disable Android Auto Backup / ADB backup so sensitive session & store data cannot leave the device
+  if (manifest.includes('android:allowBackup=')) {
+    manifest = manifest.replace(/android:allowBackup="[^"]*"/, 'android:allowBackup="false"');
+  } else {
+    manifest = manifest.replace(
+      /<application\b/,
+      '<application\n        android:allowBackup="false"'
+    );
+  }
+
   return manifest;
 }
 
@@ -47,7 +59,7 @@ export async function configureAndroid() {
     console.warn(`Warning: strings.xml not found at ${stringsPath}`);
   }
 
-  // 2. Configure AndroidManifest.xml (Permissions & Round Icon)
+  // 2. Configure AndroidManifest.xml (Permissions, Round Icon & allowBackup="false")
   const manifestPath = path.resolve('src-tauri/gen/android/app/src/main/AndroidManifest.xml');
   if (fs.existsSync(manifestPath)) {
     const manifest = fs.readFileSync(manifestPath, 'utf8');
@@ -76,8 +88,7 @@ export async function configureAndroid() {
       const generateScript = path.resolve('scripts/generate-icons.mjs');
       if (fs.existsSync(generateScript)) {
         console.log('Pre-generated icons not found. Running generate-icons.mjs...');
-        const { execSync } = await import('node:child_process');
-        execSync(`node "${generateScript}"`, { stdio: 'inherit' });
+        execFileSync(process.execPath, [generateScript], { stdio: 'inherit' });
       }
     }
 
@@ -105,11 +116,14 @@ export async function configureAndroid() {
     fs.copyFileSync(bridgeMainActivity, mainActivityPath);
     console.log('MainActivity.kt updated from bridge template.');
   } else {
-    console.warn(`Warning: Could not copy MainActivity.kt (target directory or source missing)`);
+    console.warn('Warning: Could not copy MainActivity.kt (target directory or source missing)');
   }
 }
 
-const isDirectExecution = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+const isDirectExecution =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) ===
+    path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 if (isDirectExecution) {
   configureAndroid();
 }

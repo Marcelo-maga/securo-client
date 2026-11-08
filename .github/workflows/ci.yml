@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -35,6 +38,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit runtime npm dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
       - name: Validate scripts syntax
         run: |
           node --check scripts/prepare-frontend.mjs
@@ -44,7 +50,7 @@ jobs:
           node --check scripts/package-artifacts.mjs
 
       - name: Verify HTTP Bridge bundling
-        run: npx esbuild src-tauri/bridge/http-bridge.js --bundle --format=iife --platform=browser --outfile=/tmp/bridge-test.js
+        run: npx esbuild src-tauri/bridge/http-bridge.js --bundle --format=iife --platform=browser --define:__SECURO_DEV__=false --outfile=/tmp/bridge-test.js
 
       - name: Run JavaScript & Frontend Test Suite
         run: npm test

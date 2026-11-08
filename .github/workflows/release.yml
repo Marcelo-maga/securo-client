@@ -33,9 +33,14 @@ on:
           - "aarch64"
           - "armv7"
           - "x86_64"
+      securo_ref:
+        description: "Optional upstream Securo git tag or commit SHA to pin"
+        required: false
+        default: ""
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -43,7 +48,7 @@ concurrency:
 
 env:
   SECURO_REPOSITORY: securo-finance/securo
-  SECURO_REF: ""
+  SECURO_REF: ${{ inputs.securo_ref || '' }}
   SECURO_FRONTEND_PATH: frontend
   NODE_VERSION: "22"
   # Rust CI performance optimizations
@@ -125,7 +130,7 @@ jobs:
           path: dist
 
       - name: Verify staged frontend integrity
-        run: node -e "const fs = require('node:fs'); if (!fs.existsSync('dist/app.html') || !fs.existsSync('dist/securo-http-bridge.js')) { throw new Error('Staged frontend bundle incomplete'); }"
+        run: node -e "import('./scripts/stage-frontend.mjs').then(m => { if (!m.hasValidStagedDist()) throw new Error('Staged frontend bundle incomplete or failed CSP check'); })"
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -181,20 +186,21 @@ jobs:
       - name: Resolve target architecture
         id: target-map
         shell: bash
+        env:
+          MATRIX_ARCH: ${{ matrix.arch }}
         run: |
-          ARCH="${{ matrix.arch }}"
-          case "$ARCH" in
+          case "$MATRIX_ARCH" in
             armv7)
-              echo "rust_target=armv7-linux-androideabi" >> $GITHUB_OUTPUT
-              echo "tauri_target=armv7" >> $GITHUB_OUTPUT
+              echo "rust_target=armv7-linux-androideabi" >> "$GITHUB_OUTPUT"
+              echo "tauri_target=armv7" >> "$GITHUB_OUTPUT"
               ;;
             x86_64)
-              echo "rust_target=x86_64-linux-android" >> $GITHUB_OUTPUT
-              echo "tauri_target=x86_64" >> $GITHUB_OUTPUT
+              echo "rust_target=x86_64-linux-android" >> "$GITHUB_OUTPUT"
+              echo "tauri_target=x86_64" >> "$GITHUB_OUTPUT"
               ;;
             *)
-              echo "rust_target=aarch64-linux-android" >> $GITHUB_OUTPUT
-              echo "tauri_target=aarch64" >> $GITHUB_OUTPUT
+              echo "rust_target=aarch64-linux-android" >> "$GITHUB_OUTPUT"
+              echo "tauri_target=aarch64" >> "$GITHUB_OUTPUT"
               ;;
           esac
 
@@ -215,7 +221,7 @@ jobs:
           path: dist
 
       - name: Verify staged frontend integrity
-        run: node -e "const fs = require('node:fs'); if (!fs.existsSync('dist/app.html') || !fs.existsSync('dist/securo-http-bridge.js')) { throw new Error('Staged frontend bundle incomplete'); }"
+        run: node -e "import('./scripts/stage-frontend.mjs').then(m => { if (!m.hasValidStagedDist()) throw new Error('Staged frontend bundle incomplete or failed CSP check'); })"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -259,33 +265,37 @@ jobs:
           TAURI_TARGET: ${{ steps.target-map.outputs.tauri_target }}
           INPUT_BUILD_TYPE: ${{ inputs.build_type }}
         run: |
+          set -euo pipefail
           BUILD_TYPE="${INPUT_BUILD_TYPE:-release}"
-          if [[ "${BUILD_TYPE}" == "release" && -n "${KEYSTORE_BASE64}" ]]; then
+          if [[ "${BUILD_TYPE}" == "release" ]]; then
+            if [[ -z "${KEYSTORE_BASE64}" ]]; then
+              echo "::error ::Release mode requires ANDROID_KEYSTORE_BASE64 secret. Refusing to fall back to a debug-signed APK."
+              exit 1
+            fi
             echo "::notice ::Building release APK and signing with configured keystore..."
-            KEYSTORE_FILE="/tmp/release.keystore"
-            echo "${KEYSTORE_BASE64}" | base64 -d > "${KEYSTORE_FILE}"
+            KEYSTORE_FILE="${RUNNER_TEMP}/release.keystore"
+            trap 'rm -f "${KEYSTORE_FILE}"' EXIT
+            (umask 077 && echo "${KEYSTORE_BASE64}" | base64 -d > "${KEYSTORE_FILE}")
 
             npm run tauri -- android build --target "${TAURI_TARGET}" --apk
 
             UNSIGNED_APK=$(find src-tauri/gen/android/app/build/outputs/apk -name "*release-unsigned.apk" | head -n 1)
-            if [[ -n "${UNSIGNED_APK}" ]]; then
-              SIGNED_APK="${UNSIGNED_APK/-unsigned.apk/.apk}"
-              "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
-                --ks "${KEYSTORE_FILE}" \
-                --ks-pass "pass:${KEYSTORE_PASSWORD}" \
-                --ks-key-alias "${KEY_ALIAS}" \
-                --key-pass "pass:${KEY_PASSWORD:-$KEYSTORE_PASSWORD}" \
-                --out "${SIGNED_APK}" \
-                "${UNSIGNED_APK}"
-              rm -f "${UNSIGNED_APK}"
-              echo "Signed release APK created at: ${SIGNED_APK}"
+            if [[ -z "${UNSIGNED_APK}" ]]; then
+              echo "::error ::Expected unsigned release APK was not produced."
+              exit 1
             fi
-            rm -f "${KEYSTORE_FILE}"
+            SIGNED_APK="${UNSIGNED_APK/-unsigned.apk/.apk}"
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
+              --ks "${KEYSTORE_FILE}" \
+              --ks-pass "pass:${KEYSTORE_PASSWORD}" \
+              --ks-key-alias "${KEY_ALIAS}" \
+              --key-pass "pass:${KEY_PASSWORD:-$KEYSTORE_PASSWORD}" \
+              --out "${SIGNED_APK}" \
+              "${UNSIGNED_APK}"
+            rm -f "${UNSIGNED_APK}"
+            echo "Signed release APK created at: ${SIGNED_APK}"
           else
-            if [[ "${BUILD_TYPE}" == "release" ]]; then
-              echo "::warning ::Release mode was selected, but ANDROID_KEYSTORE_BASE64 secret is not configured. Falling back to debug APK."
-            fi
-            echo "::notice ::Building debug APK (automatically signed with Android debug keystore for installation and testing)."
+            echo "::notice ::Building debug APK (explicitly requested via build_type=debug)."
             npm run tauri -- android build --target "${TAURI_TARGET}" --debug --apk
           fi
 
@@ -383,6 +393,8 @@ jobs:
   publish-release:
     name: Consolidate & Publish GitHub Release
     needs: [windows, android]
+    permissions:
+      contents: write
     if: |
       always() &&
       !contains(needs.*.result, 'failure') &&
