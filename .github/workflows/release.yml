@@ -92,7 +92,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: staged-frontend
-          path: src/
+          path: dist/
           include-hidden-files: true
           retention-days: 1
 
@@ -119,16 +119,13 @@ jobs:
         run: npm ci
 
       - name: Download pre-staged frontend bundle
-        shell: pwsh
-        run: if (Test-Path src) { Remove-Item -Recurse -Force src }
-
-      - uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4
         with:
           name: staged-frontend
-          path: src
+          path: dist
 
       - name: Verify staged frontend integrity
-        run: node -e "const fs = require('node:fs'); if (!fs.existsSync('src/app.html') || !fs.existsSync('src/securo-http-bridge.js')) { throw new Error('Staged frontend bundle incomplete'); }"
+        run: node -e "const fs = require('node:fs'); if (!fs.existsSync('dist/app.html') || !fs.existsSync('dist/securo-http-bridge.js')) { throw new Error('Staged frontend bundle incomplete'); }"
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -211,17 +208,14 @@ jobs:
       - name: Install native client CLI dependencies
         run: npm ci
 
-      - name: Clean default src before downloading staged frontend
-        run: rm -rf src
-
       - name: Download pre-staged frontend bundle
         uses: actions/download-artifact@v4
         with:
           name: staged-frontend
-          path: src
+          path: dist
 
       - name: Verify staged frontend integrity
-        run: node -e "const fs = require('node:fs'); if (!fs.existsSync('src/app.html') || !fs.existsSync('src/securo-http-bridge.js')) { throw new Error('Staged frontend bundle incomplete'); }"
+        run: node -e "const fs = require('node:fs'); if (!fs.existsSync('dist/app.html') || !fs.existsSync('dist/securo-http-bridge.js')) { throw new Error('Staged frontend bundle incomplete'); }"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -326,11 +320,10 @@ jobs:
   #         cache: npm
   #         cache-dependency-path: package-lock.json
   #     - run: npm ci
-  #     - run: rm -rf src
   #     - uses: actions/download-artifact@v4
   #       with:
   #         name: staged-frontend
-  #         path: src
+  #         path: dist
   #     - uses: dtolnay/rust-toolchain@stable
   #       with:
   #         targets: x86_64-apple-darwin, aarch64-apple-darwin
@@ -346,7 +339,7 @@ jobs:
   #         name: securo-desktop-macos
   #         path: artifacts/*
   #         retention-days: 14
-
+  #
   # linux:
   #   name: Linux Desktop (DEB & AppImage)
   #   needs: [prepare-frontend]
@@ -364,11 +357,10 @@ jobs:
   #         cache: npm
   #         cache-dependency-path: package-lock.json
   #     - run: npm ci
-  #     - run: rm -rf src
   #     - uses: actions/download-artifact@v4
   #       with:
   #         name: staged-frontend
-  #         path: src
+  #         path: dist
   #     - uses: dtolnay/rust-toolchain@stable
   #       with:
   #         targets: x86_64-unknown-linux-gnu
