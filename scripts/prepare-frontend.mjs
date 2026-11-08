@@ -1,9 +1,29 @@
 import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export function resolvePinnedRef(projectRoot = path.resolve(__dirname, '..')) {
+  if (process.env.SECURO_REF && process.env.SECURO_REF.trim() !== '') {
+    return process.env.SECURO_REF.trim();
+  }
+  const pinPath = path.join(projectRoot, '.upstream-version');
+  if (fs.existsSync(pinPath)) {
+    try {
+      const pin = fs.readFileSync(pinPath, 'utf8').trim();
+      if (pin) return pin;
+    } catch {
+      // Fall back if file unreadable
+    }
+  }
+  return '';
+}
 
 export const REPO = (process.env.SECURO_REPOSITORY || 'securo-finance/securo').trim();
-export const REF = (process.env.SECURO_REF || '').trim();
+export const REF = resolvePinnedRef();
 export const FRONTEND_PATH = (process.env.SECURO_FRONTEND_PATH || 'frontend').trim();
 export const FORCE_CLEAN = process.argv.includes('--clean') || process.env.SECURO_CLEAN === '1';
 export const TARGET_DIR = path.resolve('.securo-frontend');
@@ -77,7 +97,7 @@ function patchOptionalChainingSegment(segment) {
 
 export function patchOptionalChaining(code) {
   // Tokenize string literals and comments so only executable TS/TSX code segments are patched
-  const nonCodePattern = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g;
+  const nonCodePattern = /(\"(?:\\.|[^"\\])*\"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g;
   let result = '';
   let lastIndex = 0;
 
