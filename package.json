@@ -1,8 +1,8 @@
 {
   "name": "securo-client",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Native mobile and desktop client for self-hosted Securo personal finance",
-  "private": true,
+  "private": false,
   "type": "module",
   "homepage": "https://github.com/Marcelo-maga/securo-client",
   "repository": {
@@ -29,11 +29,17 @@
     "frontend:prepare": "node scripts/prepare-frontend.mjs",
     "frontend:stage": "node scripts/stage-frontend.mjs",
     "android:configure": "node scripts/configure-android.mjs",
-    "artifacts:package": "node scripts/package-artifacts.mjs"
+    "artifacts:package": "node scripts/package-artifacts.mjs",
+    "version:bump": "node scripts/bump-version.mjs",
+    "release": "semantic-release"
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^11.0.1",
     "@tauri-apps/cli": "^2",
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "semantic-release": "^25.0.9"
   },
   "dependencies": {
     "@tauri-apps/plugin-http": "^2"
