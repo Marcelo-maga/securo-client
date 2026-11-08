@@ -16,8 +16,6 @@ pub fn run() {
             }
         })
         .setup(|app| {
-
-
             let store = app.store("config.json").ok();
             let saved_server_url = store
                 .as_ref()
