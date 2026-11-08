@@ -41,8 +41,9 @@ const destConfigDir = path.join(SRC_DIR, 'config');
 fs.mkdirSync(destConfigDir, { recursive: true });
 fs.cpSync(BACKUP_CONFIG_DIR, destConfigDir, { recursive: true });
 
-// 5. Copy bootstrap, mobile overrides and favicon
+// 5. Copy bootstrap HTML + external script, mobile overrides and favicon
 fs.copyFileSync(path.join(BRIDGE_DIR, 'bootstrap.html'), path.join(SRC_DIR, 'index.html'));
+fs.copyFileSync(path.join(BRIDGE_DIR, 'bootstrap.js'), path.join(SRC_DIR, 'bootstrap.js'));
 fs.copyFileSync(path.join(BRIDGE_DIR, 'mobile-overrides.css'), path.join(SRC_DIR, 'mobile-overrides.css'));
 
 const faviconSrc = path.resolve('assets/favicon.ico');
@@ -50,53 +51,21 @@ if (fs.existsSync(faviconSrc)) {
   fs.copyFileSync(faviconSrc, path.join(SRC_DIR, 'favicon.ico'));
 }
 
-// 6. Bundle http-bridge.js using esbuild
+// 6. Bundle http-bridge.js (includes CSP-compliant runtime error overlay) using esbuild
 const bridgeJsOut = path.join(SRC_DIR, 'securo-http-bridge.js');
 console.log('Bundling HTTP bridge with esbuild...');
 execSync(`npx esbuild "${path.join(BRIDGE_DIR, 'http-bridge.js')}" --bundle --format=iife --platform=browser --outfile="${bridgeJsOut}"`, {
   stdio: 'inherit',
 });
 
-// 7. Inject safe DOM error boundary script, CSS override and HTTP bridge into app.html
+// 7. Inject external CSS override and HTTP bridge into app.html (no inline scripts for strict CSP)
 if (fs.existsSync(appHtml)) {
   let html = fs.readFileSync(appHtml, 'utf8');
 
-  const errorAndBridgeSnippet = `<script>
-(function() {
-  function reportRuntimeError(label, detail) {
-    var b = document.getElementById("securo-err");
-    if (!b) {
-      b = document.createElement("div");
-      b.id = "securo-err";
-      b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:999999;background:#b91c1c;color:#fff;padding:12px 36px 12px 12px;font-family:monospace;font-size:12px;word-break:break-all;max-height:50vh;overflow:auto;";
-      var closeBtn = document.createElement("button");
-      closeBtn.type = "button";
-      closeBtn.textContent = "\\u00d7";
-      closeBtn.setAttribute("aria-label", "Dismiss error");
-      closeBtn.style.cssText = "position:absolute;top:6px;right:8px;background:transparent;border:none;color:#fff;font-size:18px;line-height:1;cursor:pointer;padding:4px;";
-      closeBtn.onclick = function() { b.remove(); };
-      b.appendChild(closeBtn);
-      (document.body || document.documentElement).appendChild(b);
-    }
-    var row = document.createElement("div");
-    var strong = document.createElement("b");
-    strong.textContent = label + ": ";
-    row.appendChild(strong);
-    row.appendChild(document.createTextNode(String(detail)));
-    b.appendChild(row);
-  }
-  window.addEventListener("error", function(e) {
-    reportRuntimeError("JS Error", e.message || e.error || e);
-  });
-  window.addEventListener("unhandledrejection", function(e) {
-    reportRuntimeError("Promise Error", (e.reason && e.reason.message) || e.reason || e);
-  });
-})();
-</script>
-<link rel="stylesheet" href="./mobile-overrides.css">
+  const bridgeAssetsSnippet = `<link rel="stylesheet" href="./mobile-overrides.css">
 <script src="./securo-http-bridge.js"></script>`;
 
-  html = html.replace(/<head>/i, '<head>\n' + errorAndBridgeSnippet);
+  html = html.replace(/<head>/i, '<head>\n' + bridgeAssetsSnippet);
 
   if (!html.includes('viewport-fit=cover')) {
     html = html.replace('width=device-width, initial-scale=1.0', 'width=device-width, initial-scale=1.0, viewport-fit=cover');

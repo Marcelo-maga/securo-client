@@ -66,24 +66,6 @@
       <circle opacity=".25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" />
       <path opacity=".9" fill="currentColor" d="M21 12a9 9 0 0 1-9 9v-3a6 6 0 0 0 6-6h3Z" />
     </svg>
-    <script>
-      const invoke = window.__TAURI__?.core?.invoke;
-      const openConfig = () => window.location.replace("config/config.html");
-      if (!invoke) {
-        openConfig();
-      } else {
-        invoke("get_connection_settings")
-          .then((settings) => {
-            const serverUrl = settings?.server_url || settings?.serverUrl;
-            const autoConnect = Boolean(settings?.auto_connect ?? settings?.autoConnect);
-            if (serverUrl && autoConnect) {
-              window.location.replace("app.html#/");
-            } else {
-              openConfig();
-            }
-          })
-          .catch(openConfig);
-      }
-    </script>
+    <script src="bootstrap.js"></script>
   </body>
 </html>
