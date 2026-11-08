@@ -1,6 +1,6 @@
-# Securo Client
-
 <div align="center">
+
+# Securo Client
 
 [![CI Pipeline](https://github.com/Marcelo-maga/securo-client/actions/workflows/ci.yml/badge.svg)](https://github.com/Marcelo-maga/securo-client/actions/workflows/ci.yml)
 [![Release Pipeline](https://github.com/Marcelo-maga/securo-client/actions/workflows/release.yml/badge.svg)](https://github.com/Marcelo-maga/securo-client/actions/workflows/release.yml)
