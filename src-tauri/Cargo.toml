@@ -1,6 +1,6 @@
 [package]
 name = "securo-client"
-version = "0.1.0"
+version = "0.1.2"
 description = "Cross-platform native client for self-hosted Securo personal finance"
 authors = ["Securo Contributors"]
 license = "AGPL-3.0-only"
