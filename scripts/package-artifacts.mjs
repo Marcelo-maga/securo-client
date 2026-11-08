@@ -5,8 +5,29 @@ import { fileURLToPath } from 'node:url';
 
 export const KNOWN_ABIS = ['armeabi-v7a', 'x86_64', 'x86', 'universal', 'arm64-v8a'];
 
-export function resolveAbi(filename) {
-  return KNOWN_ABIS.find((candidate) => filename.includes(candidate)) || 'arm64-v8a';
+const TARGET_TO_ABI = {
+  aarch64: 'arm64-v8a',
+  'aarch64-linux-android': 'arm64-v8a',
+  'arm64-v8a': 'arm64-v8a',
+  armv7: 'armeabi-v7a',
+  'armv7-linux-androideabi': 'armeabi-v7a',
+  'armeabi-v7a': 'armeabi-v7a',
+  x86_64: 'x86_64',
+  'x86_64-linux-android': 'x86_64',
+  i686: 'x86',
+  x86: 'x86',
+};
+
+export function resolveAbi(filename, targetHint = process.env.SECURO_ANDROID_ABI || process.env.TAURI_TARGET || '') {
+  const explicitAbis = ['armeabi-v7a', 'x86_64', 'x86', 'arm64-v8a'];
+  const matchedExplicit = explicitAbis.find((candidate) => filename.includes(candidate));
+  if (matchedExplicit) return matchedExplicit;
+
+  const mappedHint = TARGET_TO_ABI[String(targetHint).trim()];
+  if (mappedHint) return mappedHint;
+
+  if (filename.includes('universal')) return 'universal';
+  return 'arm64-v8a';
 }
 
 export function resolveBuildType(filename) {
@@ -116,6 +137,7 @@ export function packageArtifacts({
   ],
   outDir = path.resolve('artifacts'),
   versionOverride = null,
+  targetHint = process.env.SECURO_ANDROID_ABI || process.env.TAURI_TARGET || '',
 } = {}) {
   // Read app version
   let version = versionOverride || '0.1.0';
@@ -148,7 +170,7 @@ export function packageArtifacts({
     console.log(`Found ${apks.length} Android APK(s). Packaging and hashing...`);
     for (const apkPath of apks) {
       const fileName = path.basename(apkPath);
-      const abi = resolveAbi(apkPath);
+      const abi = resolveAbi(apkPath, targetHint);
       const buildType = resolveBuildType(apkPath);
       const newFileName = formatArtifactName(releaseVersion, abi, buildType);
       const destPath = path.join(outDir, newFileName);

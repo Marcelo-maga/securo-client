@@ -3,12 +3,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const REPO = process.env.SECURO_REPOSITORY || 'securo-finance/securo';
+const REF = (process.env.SECURO_REF || '').trim();
 const FRONTEND_PATH = process.env.SECURO_FRONTEND_PATH || 'frontend';
+const FORCE_CLEAN = process.argv.includes('--clean') || process.env.SECURO_CLEAN === '1';
 const TARGET_DIR = path.resolve('.securo-frontend');
 const BRIDGE_DIR = path.resolve('src-tauri/bridge');
 
 function run(command, cwd = process.cwd()) {
   execSync(command, { cwd, stdio: 'inherit' });
+}
+
+if (FORCE_CLEAN && fs.existsSync(TARGET_DIR)) {
+  console.log('Cleaning existing .securo-frontend directory (--clean)...');
+  fs.rmSync(TARGET_DIR, { recursive: true, force: true });
 }
 
 console.log('--- 1. Fetching Securo Frontend ---');
@@ -18,9 +25,16 @@ if (!fs.existsSync(TARGET_DIR)) {
     fs.rmSync(tempRepo, { recursive: true, force: true });
   }
 
-  console.log(`Cloning sparse repository: ${REPO}...`);
-  run(`git clone --depth 1 --filter=blob:none --sparse "https://github.com/${REPO}.git" "${tempRepo}"`);
-  run(`git -C "${tempRepo}" sparse-checkout set "${FRONTEND_PATH}"`);
+  console.log(`Cloning sparse repository: ${REPO}${REF ? ` (ref: ${REF})` : ''}...`);
+  if (REF) {
+    run(`git clone --no-checkout --depth 1 --filter=blob:none --sparse "https://github.com/${REPO}.git" "${tempRepo}"`);
+    run(`git -C "${tempRepo}" sparse-checkout set "${FRONTEND_PATH}"`);
+    run(`git -C "${tempRepo}" fetch --depth 1 origin "${REF}"`);
+    run(`git -C "${tempRepo}" checkout FETCH_HEAD`);
+  } else {
+    run(`git clone --depth 1 --filter=blob:none --sparse "https://github.com/${REPO}.git" "${tempRepo}"`);
+    run(`git -C "${tempRepo}" sparse-checkout set "${FRONTEND_PATH}"`);
+  }
 
   const extracted = path.join(tempRepo, FRONTEND_PATH);
   if (!fs.existsSync(extracted)) {
@@ -31,7 +45,7 @@ if (!fs.existsSync(TARGET_DIR)) {
   fs.rmSync(tempRepo, { recursive: true, force: true });
   console.log('Frontend source ready in .securo-frontend');
 } else {
-  console.log('.securo-frontend directory already present, skipping clone.');
+  console.log('.securo-frontend directory already present, skipping clone (pass --clean to re-fetch).');
 }
 
 console.log('--- 2. Applying Mobile Adaptations ---');
@@ -102,14 +116,19 @@ patchFindCalls(srcDir);
 console.log('Frontend code adapted for mobile webview.');
 
 console.log('--- 3. Installing dependencies & building frontend ---');
-if (fs.existsSync(path.join(TARGET_DIR, 'package-lock.json'))) {
-  run('npm ci', TARGET_DIR);
-} else if (fs.existsSync(path.join(TARGET_DIR, 'pnpm-lock.yaml'))) {
-  run('corepack enable && pnpm install --frozen-lockfile', TARGET_DIR);
-} else if (fs.existsSync(path.join(TARGET_DIR, 'yarn.lock'))) {
-  run('corepack enable && yarn install --immutable', TARGET_DIR);
+const hasNodeModules = fs.existsSync(path.join(TARGET_DIR, 'node_modules'));
+if (!hasNodeModules || FORCE_CLEAN) {
+  if (fs.existsSync(path.join(TARGET_DIR, 'package-lock.json'))) {
+    run('npm ci', TARGET_DIR);
+  } else if (fs.existsSync(path.join(TARGET_DIR, 'pnpm-lock.yaml'))) {
+    run('corepack enable && pnpm install --frozen-lockfile', TARGET_DIR);
+  } else if (fs.existsSync(path.join(TARGET_DIR, 'yarn.lock'))) {
+    run('corepack enable && yarn install --immutable', TARGET_DIR);
+  } else {
+    run('npm install', TARGET_DIR);
+  }
 } else {
-  run('npm install', TARGET_DIR);
+  console.log('Existing .securo-frontend/node_modules detected, skipping package install.');
 }
 
 run('npm run build', TARGET_DIR);

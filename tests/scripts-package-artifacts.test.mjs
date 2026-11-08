@@ -1,11 +1,9 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {
-  KNOWN_ABIS,
   resolveAbi,
   resolveBuildType,
   computeSha256,
@@ -19,16 +17,22 @@ import {
 describe('Package Artifacts Pipeline & Checksum Calculation', () => {
   describe('ABI Resolution', () => {
     test('correctly identifies all Android ABI variants', () => {
-      assert.equal(resolveAbi('app-arm64-v8a-release.apk'), 'arm64-v8a');
-      assert.equal(resolveAbi('app-armeabi-v7a-debug.apk'), 'armeabi-v7a');
-      assert.equal(resolveAbi('app-x86_64-release-unsigned.apk'), 'x86_64');
-      assert.equal(resolveAbi('app-x86-debug.apk'), 'x86');
-      assert.equal(resolveAbi('app-universal-release.apk'), 'universal');
+      assert.equal(resolveAbi('app-arm64-v8a-release.apk', ''), 'arm64-v8a');
+      assert.equal(resolveAbi('app-armeabi-v7a-debug.apk', ''), 'armeabi-v7a');
+      assert.equal(resolveAbi('app-x86_64-release-unsigned.apk', ''), 'x86_64');
+      assert.equal(resolveAbi('app-x86-debug.apk', ''), 'x86');
+      assert.equal(resolveAbi('app-universal-release.apk', ''), 'universal');
+    });
+
+    test('maps single-target Tauri builds on universal flavor filenames using targetHint', () => {
+      assert.equal(resolveAbi('app-universal-release.apk', 'aarch64'), 'arm64-v8a');
+      assert.equal(resolveAbi('app-universal-release.apk', 'armv7'), 'armeabi-v7a');
+      assert.equal(resolveAbi('app-universal-debug.apk', 'x86_64'), 'x86_64');
     });
 
     test('defaults to arm64-v8a when no known ABI is present in filename', () => {
-      assert.equal(resolveAbi('app-release.apk'), 'arm64-v8a');
-      assert.equal(resolveAbi('securo-mobile.apk'), 'arm64-v8a');
+      assert.equal(resolveAbi('app-release.apk', ''), 'arm64-v8a');
+      assert.equal(resolveAbi('securo-mobile.apk', ''), 'arm64-v8a');
     });
   });
 
