@@ -14,8 +14,8 @@ We are committed to providing a welcoming, inclusive, and harassment-free enviro
 
 ## How Can I Contribute?
 
-- 🐛 **Report Bugs:** Open an issue describing the bug, including steps to reproduce, device specifications, and log output.
-- 💡 **Suggest Features:** Share ideas for mobile/desktop optimizations, UI polish, or homelab enhancements.
+- 🐛 **Report Bugs:** Open an issue describing the bug, including steps to reproduce, OS/device specifications, and log output.
+- 💡 **Suggest Features:** Share ideas for desktop/mobile optimizations, UI polish, or homelab enhancements.
 - 🌐 **Translations:** Improve or add language files in `src/config/locales/`.
 - 💻 **Code Contributions:** Implement bug fixes, enhance bridge capabilities, or streamline the CI/CD pipeline.
 
@@ -25,16 +25,17 @@ We are committed to providing a welcoming, inclusive, and harassment-free enviro
 
 ### 1. Prerequisites
 
-Make sure you have the following installed on your machine:
+#### Core Requirements (Desktop & General Development)
 - **Node.js** `>= 22.0.0` and **npm** `>= 10.0.0`
 - **Rust** Stable (`>= 1.80`)
+- **Tauri System Dependencies:** Follow the official [Tauri v2 Prerequisites Guide](https://v2.tauri.app/start/prerequisites/) for your operating system (Windows, Linux, or macOS).
+
+#### Android Requirements *(Optional — only needed for Android builds)*
 - **Java Development Kit (JDK)** `17` (Eclipse Temurin recommended)
 - **Android SDK & NDK:**
   - Android API Level `35`
   - Build Tools `35.0.0`
   - NDK `27.0.12077973`
-- **Tauri Prerequisites:**
-  - Follow the official [Tauri v2 Prerequisites Guide](https://v2.tauri.app/start/prerequisites/) for your operating system.
 
 ### 2. Fork and Clone
 
@@ -42,12 +43,6 @@ Make sure you have the following installed on your machine:
 git clone https://github.com/YOUR_USERNAME/securo-client.git
 cd securo-client
 npm install
-```
-
-### 3. Add Android Rust Targets
-
-```bash
-rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 ```
 
 ---
@@ -62,23 +57,30 @@ To prepare the frontend assets from upstream:
 # Pulls upstream web frontend, applies HashRouter, and compiles
 npm run frontend:prepare
 
-# Bundles http-bridge.js and stages files in src/
+# Bundles http-bridge.js and stages files in dist/
 npm run frontend:stage
 ```
 
 ### Desktop Development
 
-For rapid UI and bridge testing without an emulator:
+Run the desktop application in development mode:
 
 ```bash
 npm run tauri -- dev
 ```
 
-### Android Development
-
-Initialize the Android project directory (first time only):
+Build native desktop installers for your operating system:
 
 ```bash
+npm run desktop:build
+```
+
+### Android Development *(Optional)*
+
+Add the Android Rust targets and initialize the Android project directory (first time only):
+
+```bash
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 npm run tauri -- android init
 npm run android:configure
 ```
@@ -89,7 +91,9 @@ Compile a debug APK:
 npm run tauri -- android build --target aarch64 --debug --apk
 ```
 
-Package artifacts with SHA-256 checksums:
+### Artifact Packaging
+
+Standardize built installers/APKs in `artifacts/` and generate SHA-256 checksums:
 
 ```bash
 npm run artifacts:package
@@ -140,6 +144,7 @@ We adhere to the [Conventional Commits](https://www.conventionalcommits.org/) st
   node --check scripts/prepare-frontend.mjs
   node --check scripts/stage-frontend.mjs
   node --check scripts/configure-android.mjs
+  node --check scripts/generate-icons.mjs
   node --check scripts/package-artifacts.mjs
   ```
 

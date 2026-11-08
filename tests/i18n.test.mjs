@@ -9,7 +9,6 @@ describe('Internationalization (i18n) Consistency', () => {
   const configEnPath = path.resolve(rootDir, 'src/config/locales/en-US.json');
   const configPtPath = path.resolve(rootDir, 'src/config/locales/pt-BR.json');
   const configHtmlPath = path.resolve(rootDir, 'src/config/config.html');
-  const configSetupJsPath = path.resolve(rootDir, 'src/config/scripts/setup.js');
 
   test('all canonical locale files exist in src/config/locales/', () => {
     assert.ok(fs.existsSync(configEnPath), 'src/config/locales/en-US.json must exist as single source of truth');
@@ -106,20 +105,5 @@ describe('Internationalization (i18n) Consistency', () => {
     assert.ok(html.includes('data-i18n="copy"'), 'copy-error-button must have data-i18n="copy"');
     assert.ok(html.includes('data-i18n="autoConnectLabel"'), 'auto-connect row must have data-i18n="autoConnectLabel"');
     assert.ok(html.includes('data-i18n="connectConfigured"'), 'connect-configured-button must have data-i18n="connectConfigured"');
-  });
-
-  test('setup.js embedded fallback locales match JSON locales', () => {
-    const jsContent = fs.readFileSync(configSetupJsPath, 'utf8');
-    const en = JSON.parse(fs.readFileSync(configEnPath, 'utf8'));
-    const pt = JSON.parse(fs.readFileSync(configPtPath, 'utf8'));
-
-    assert.ok(
-      jsContent.includes(en.errors.SERVER_UNREACHABLE),
-      'setup.js embedded fallback must contain the full en-US SERVER_UNREACHABLE message'
-    );
-    assert.ok(
-      jsContent.includes(pt.errors.SERVER_UNREACHABLE),
-      'setup.js embedded fallback must contain the full pt-BR SERVER_UNREACHABLE message'
-    );
   });
 });

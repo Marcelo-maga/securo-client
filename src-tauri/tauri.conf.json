@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.securo.client",
   "build": {
-    "frontendDist": "../src"
+    "frontendDist": "../dist",
+    "beforeDevCommand": "node scripts/stage-frontend.mjs --allow-fallback",
+    "beforeBuildCommand": "node scripts/stage-frontend.mjs --allow-fallback"
   },
   "app": {
     "withGlobalTauri": true,

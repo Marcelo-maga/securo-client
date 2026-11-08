@@ -6,7 +6,7 @@
 [![Release Pipeline](https://github.com/Marcelo-maga/securo-client/actions/workflows/release.yml/badge.svg)](https://github.com/Marcelo-maga/securo-client/actions/workflows/release.yml)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2.0-blue.svg?logo=tauri&logoColor=white)](https://tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Desktop-green.svg?logo=android&logoColor=white)](https://android.com)
+[![Platform](https://img.shields.io/badge/Platform-Desktop%20%7C%20Android-green.svg)](#installation)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 
 **Fast, private native client for self-hosted [Securo](https://github.com/securo-finance/securo) personal finance.**
@@ -17,7 +17,7 @@
 [Features](#why-securo-client) •
 [Architecture](#architecture) •
 [Development](#development) •
-[Troubleshooting](#troubleshooting) •
+[Contributing](#contributing) •
 [License](#license--attribution)
 
 </div>
@@ -26,13 +26,13 @@
 
 ## Why Securo Client?
 
-Running self-hosted web apps on mobile browsers or PWAs often creates friction: CORS blocks local IP addresses/VPNs, browsers reject self-signed homelab TLS certificates, and browser URL bars waste screen space.
+Running self-hosted web apps in standard browsers or PWAs often creates friction: CORS blocks local IP addresses/VPNs, browsers reject self-signed homelab TLS certificates, and browser chrome wastes screen space.
 
 **Securo Client eliminates these issues:**
 
 - ⚡ **Native HTTP Bridge:** Proxies all `fetch` and `XMLHttpRequest` calls through native Rust sockets (`reqwest` + `rustls`), completely bypassing WebView CORS and mixed-content restrictions.
 - 🛡️ **Homelab & Self-Signed TLS Support:** Connect securely to private LAN IPs (`192.168.x.x`), Tailscale/WireGuard domains, or servers with self-signed SSL certificates.
-- 📱 **True Native Experience:** Edge-to-edge layout, safe-area inset handling (status/navigation bars and camera notches), zero browser chrome, and persistent local session state.
+- 🖥️ **True Native Experience:** Standalone desktop windowing and edge-to-edge mobile layout (with safe-area inset handling), zero browser chrome, and persistent local session state.
 - 🔒 **100% Private & Direct:** Direct peer-to-peer connection to your server. No cloud relays, no tracking, no telemetry.
 
 ---
@@ -60,7 +60,7 @@ Securo Client embeds an optimized build of the official Securo web frontend insi
 flowchart TD
     subgraph ClientApp["💻📱 Securo Client (Tauri v2)"]
         subgraph WebView["Local WebView Sandbox"]
-            UI["Securo React Frontend\n(HashRouter + Mobile Overrides)"]
+            UI["Securo React Frontend\n(HashRouter + Native Overrides)"]
             Bridge["securo-http-bridge.js\n(Patched window.fetch & XHR)"]
             UI -->|"HTTP /api/* calls"| Bridge
         end
@@ -88,14 +88,17 @@ flowchart TD
 
 ### Prerequisites
 
-| Tool | Version | Purpose |
-| :--- | :--- | :--- |
-| **Node.js** | `>= 22.0.0` | Frontend toolchain & scripts |
-| **Rust** | Stable (`>= 1.80`) | Compiles the Tauri native shell |
-| **Java JDK** | `17` (Temurin) | Android Gradle build |
-| **Android SDK/NDK** | API 35 / NDK `27.x` | Android compilation |
+| Tool | Version | Scope | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Node.js** | `>= 22.0.0` | All | Frontend toolchain & scripts |
+| **Rust** | Stable (`>= 1.80`) | All | Compiles the Tauri native shell |
+| **Tauri OS Deps** | OS-specific | Desktop | Native WebView & system libraries ([Setup Guide](https://v2.tauri.app/start/prerequisites/)) |
+| **Java JDK** | `17` (Temurin) | Android *(Optional)* | Android Gradle build |
+| **Android SDK/NDK** | API 35 / NDK `27.x` | Android *(Optional)* | Android compilation |
 
-### Quick Start
+> **Note:** Java JDK and Android SDK/NDK are **not required** if you are only developing or building for Desktop.
+
+### Quick Start (Desktop)
 
 ```bash
 # 1. Clone & install dependencies
@@ -107,8 +110,18 @@ npm install
 npm run frontend:prepare
 npm run frontend:stage
 
-# 3. Run on desktop (Linux / macOS / Windows)
+# 3. Run on desktop (Windows / Linux / macOS)
 npm run tauri -- dev
+```
+
+### Building for Desktop
+
+```bash
+# Build native desktop installers for your current OS
+npm run desktop:build
+
+# Optional: package & generate SHA-256 checksums in artifacts/
+npm run artifacts:package
 ```
 
 ### Building for Android
