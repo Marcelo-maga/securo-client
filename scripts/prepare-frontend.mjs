@@ -1,14 +1,51 @@
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const REPO = process.env.SECURO_REPOSITORY || 'securo-finance/securo';
+export const REPO = (process.env.SECURO_REPOSITORY || 'securo-finance/securo').trim();
 export const REF = (process.env.SECURO_REF || '').trim();
-export const FRONTEND_PATH = process.env.SECURO_FRONTEND_PATH || 'frontend';
+export const FRONTEND_PATH = (process.env.SECURO_FRONTEND_PATH || 'frontend').trim();
 export const FORCE_CLEAN = process.argv.includes('--clean') || process.env.SECURO_CLEAN === '1';
 export const TARGET_DIR = path.resolve('.securo-frontend');
 
-export function run(command, cwd = process.cwd()) {
+const REPO_SLUG_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const SAFE_GIT_REF_RE = /^[A-Za-z0-9._/-]+$/;
+const SAFE_SUBPATH_RE = /^[A-Za-z0-9._/-]+$/;
+
+export function validateFrontendSourceConfig({
+  repo = REPO,
+  ref = REF,
+  frontendPath = FRONTEND_PATH,
+} = {}) {
+  if (!repo || !REPO_SLUG_RE.test(repo) || repo.includes('..')) {
+    throw new Error(`Invalid SECURO_REPOSITORY "${repo}". Expected "owner/repo" format.`);
+  }
+
+  if (ref) {
+    if (ref.startsWith('-') || ref.includes('..') || !SAFE_GIT_REF_RE.test(ref)) {
+      throw new Error(`Invalid SECURO_REF "${ref}". Ref contains unsafe characters or option flags.`);
+    }
+  }
+
+  if (
+    !frontendPath ||
+    frontendPath.startsWith('-') ||
+    frontendPath.startsWith('/') ||
+    path.isAbsolute(frontendPath) ||
+    !SAFE_SUBPATH_RE.test(frontendPath) ||
+    frontendPath.split(/[\\/]/).includes('..')
+  ) {
+    throw new Error(`Invalid SECURO_FRONTEND_PATH "${frontendPath}". Must be a safe relative subdirectory.`);
+  }
+
+  return { repo, ref, frontendPath };
+}
+
+export function runGit(args, cwd = process.cwd()) {
+  execFileSync('git', args, { cwd, stdio: 'inherit' });
+}
+
+export function runPackageScript(command, cwd = process.cwd()) {
   execSync(command, { cwd, stdio: 'inherit' });
 }
 
@@ -26,8 +63,8 @@ export function patchViteConfig(viteConfigContent) {
   return viteConfigContent;
 }
 
-export function patchOptionalChaining(code) {
-  let content = code;
+function patchOptionalChainingSegment(segment) {
+  let content = segment;
   content = content.replace(/(\.[a-zA-Z0-9_]+)\.find\(/g, '$1?.find(');
   content = content.replace(/([a-zA-Z0-9_]+)\.current\.find\(/g, '$1.current?.find(');
   content = content.replace(/([a-zA-Z0-9_]+)\.baseline\.find\(/g, '$1.baseline?.find(');
@@ -38,7 +75,30 @@ export function patchOptionalChaining(code) {
   return content;
 }
 
+export function patchOptionalChaining(code) {
+  // Tokenize string literals and comments so only executable TS/TSX code segments are patched
+  const nonCodePattern = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g;
+  let result = '';
+  let lastIndex = 0;
+
+  for (const match of code.matchAll(nonCodePattern)) {
+    const matchStart = match.index;
+    if (matchStart > lastIndex) {
+      result += patchOptionalChainingSegment(code.slice(lastIndex, matchStart));
+    }
+    result += match[0];
+    lastIndex = matchStart + match[0].length;
+  }
+
+  if (lastIndex < code.length) {
+    result += patchOptionalChainingSegment(code.slice(lastIndex));
+  }
+
+  return result;
+}
+
 export function patchFindCalls(dir) {
+  if (!fs.existsSync(dir)) return;
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
@@ -55,6 +115,8 @@ export function patchFindCalls(dir) {
 }
 
 export function prepareFrontend() {
+  const { repo, ref, frontendPath } = validateFrontendSourceConfig();
+
   if (FORCE_CLEAN && fs.existsSync(TARGET_DIR)) {
     console.log('Cleaning existing .securo-frontend directory (--clean)...');
     fs.rmSync(TARGET_DIR, { recursive: true, force: true });
@@ -67,20 +129,24 @@ export function prepareFrontend() {
       fs.rmSync(tempRepo, { recursive: true, force: true });
     }
 
-    console.log(`Cloning sparse repository: ${REPO}${REF ? ` (ref: ${REF})` : ''}...`);
-    if (REF) {
-      run(`git clone --no-checkout --depth 1 --filter=blob:none --sparse "https://github.com/${REPO}.git" "${tempRepo}"`);
-      run(`git -C "${tempRepo}" sparse-checkout set "${FRONTEND_PATH}"`);
-      run(`git -C "${tempRepo}" fetch --depth 1 origin "${REF}"`);
-      run(`git -C "${tempRepo}" checkout FETCH_HEAD`);
+    const repoUrl = `https://github.com/${repo}.git`;
+    console.log(`Cloning sparse repository: ${repo}${ref ? ` (ref: ${ref})` : ''}...`);
+    if (ref) {
+      runGit(['clone', '--no-checkout', '--depth', '1', '--filter=blob:none', '--sparse', '--', repoUrl, tempRepo]);
+      runGit(['-C', tempRepo, 'sparse-checkout', 'set', '--', frontendPath]);
+      runGit(['-C', tempRepo, 'fetch', '--depth', '1', 'origin', ref]);
+      runGit(['-C', tempRepo, 'checkout', 'FETCH_HEAD']);
     } else {
-      run(`git clone --depth 1 --filter=blob:none --sparse "https://github.com/${REPO}.git" "${tempRepo}"`);
-      run(`git -C "${tempRepo}" sparse-checkout set "${FRONTEND_PATH}"`);
+      runGit(['clone', '--depth', '1', '--filter=blob:none', '--sparse', '--', repoUrl, tempRepo]);
+      runGit(['-C', tempRepo, 'sparse-checkout', 'set', '--', frontendPath]);
     }
 
-    const extracted = path.join(tempRepo, FRONTEND_PATH);
+    const extracted = path.resolve(tempRepo, frontendPath);
+    if (!extracted.startsWith(tempRepo + path.sep)) {
+      throw new Error(`Resolved frontend path "${extracted}" escapes temporary repository root`);
+    }
     if (!fs.existsSync(extracted)) {
-      throw new Error(`Frontend directory "${FRONTEND_PATH}" not found in repository`);
+      throw new Error(`Frontend directory "${frontendPath}" not found in repository`);
     }
 
     fs.renameSync(extracted, TARGET_DIR);
@@ -121,23 +187,26 @@ export function prepareFrontend() {
   const hasNodeModules = fs.existsSync(path.join(TARGET_DIR, 'node_modules'));
   if (!hasNodeModules || FORCE_CLEAN) {
     if (fs.existsSync(path.join(TARGET_DIR, 'package-lock.json'))) {
-      run('npm ci', TARGET_DIR);
+      runPackageScript('npm ci', TARGET_DIR);
     } else if (fs.existsSync(path.join(TARGET_DIR, 'pnpm-lock.yaml'))) {
-      run('corepack enable && pnpm install --frozen-lockfile', TARGET_DIR);
+      runPackageScript('corepack enable && pnpm install --frozen-lockfile', TARGET_DIR);
     } else if (fs.existsSync(path.join(TARGET_DIR, 'yarn.lock'))) {
-      run('corepack enable && yarn install --immutable', TARGET_DIR);
+      runPackageScript('corepack enable && yarn install --immutable', TARGET_DIR);
     } else {
-      run('npm install', TARGET_DIR);
+      runPackageScript('npm install', TARGET_DIR);
     }
   } else {
     console.log('Existing .securo-frontend/node_modules detected, skipping package install.');
   }
 
-  run('npm run build', TARGET_DIR);
+  runPackageScript('npm run build', TARGET_DIR);
   console.log('Securo frontend built successfully!');
 }
 
-const isDirectExecution = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+const isDirectExecution =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) ===
+    path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 if (isDirectExecution) {
   prepareFrontend();
 }
