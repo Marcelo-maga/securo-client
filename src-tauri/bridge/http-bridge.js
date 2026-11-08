@@ -1,26 +1,52 @@
 import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
 
-export function isApiRequest(input, baseHref = "http://tauri.localhost/") {
+function hasEncodedDotSegment(rawUrl) {
+  return /%2e/i.test(rawUrl);
+}
+
+function normalizeRelativeApiPrefix(raw) {
+  return raw === "api" || raw.startsWith("api/") || raw.startsWith("api?") || raw.startsWith("api#")
+    ? `/${raw}`
+    : raw;
+}
+
+export function isApiRequest(input, baseHref = "http://tauri.localhost/", serverUrl = null) {
   if (!input) return false;
   const urlStr = typeof input === "string" ? input : input.url || "";
-  if (!urlStr) return false;
+  if (!urlStr || hasEncodedDotSegment(urlStr)) return false;
 
-  if (
-    urlStr === "/api" ||
-    urlStr.startsWith("/api/") ||
-    urlStr.startsWith("/api?") ||
-    urlStr.startsWith("/api#") ||
-    urlStr === "api" ||
-    urlStr.startsWith("api/") ||
-    urlStr.startsWith("api?") ||
-    urlStr.startsWith("api#")
-  ) {
-    return true;
-  }
+  const normalized = normalizeRelativeApiPrefix(urlStr);
 
   try {
-    const { pathname } = new URL(urlStr, baseHref);
-    return pathname === "/api" || pathname.startsWith("/api/");
+    const base = new URL(baseHref);
+    const parsed = new URL(normalized, base);
+
+    let allowedServerOrigin = null;
+    let serverBasePath = "";
+    if (serverUrl) {
+      try {
+        const parsedServer = new URL(serverUrl);
+        allowedServerOrigin = parsedServer.origin;
+        serverBasePath = parsedServer.pathname.endsWith("/")
+          ? parsedServer.pathname.slice(0, -1)
+          : parsedServer.pathname;
+      } catch {
+        allowedServerOrigin = null;
+      }
+    }
+
+    if (parsed.origin !== base.origin && parsed.origin !== allowedServerOrigin) {
+      return false;
+    }
+
+    const { pathname } = parsed;
+    if (pathname === "/api" || pathname.startsWith("/api/")) {
+      return true;
+    }
+    if (serverBasePath && (pathname === `${serverBasePath}/api` || pathname.startsWith(`${serverBasePath}/api/`))) {
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -29,23 +55,32 @@ export function isApiRequest(input, baseHref = "http://tauri.localhost/") {
 export function getApiUrl(input, serverUrl, baseHref = "http://tauri.localhost/") {
   if (!serverUrl || !input) return null;
   const raw = typeof input === "string" ? input : input.url || "";
-  if (!raw) return null;
+  if (!raw || hasEncodedDotSegment(raw)) return null;
 
-  const normalized =
-    raw === "api" || raw.startsWith("api/") || raw.startsWith("api?") || raw.startsWith("api#")
-      ? `/${raw}`
-      : raw;
+  const normalized = normalizeRelativeApiPrefix(raw);
 
   try {
-    const parsed = new URL(normalized, baseHref);
+    const base = new URL(baseHref);
+    const parsed = new URL(normalized, base);
     const target = new URL(serverUrl);
+
+    if (parsed.origin !== base.origin && parsed.origin !== target.origin) {
+      return null;
+    }
+
     const rawPath = target.pathname;
     const basePath = rawPath.endsWith("/") ? rawPath.slice(0, -1) : rawPath;
-    if (basePath && !parsed.pathname.startsWith(basePath + "/")) {
+    if (basePath && !parsed.pathname.startsWith(basePath + "/") && parsed.pathname !== basePath) {
       target.pathname = basePath + parsed.pathname;
     } else {
       target.pathname = parsed.pathname;
     }
+
+    const expectedApiPrefix = `${basePath}/api`;
+    if (target.pathname !== expectedApiPrefix && !target.pathname.startsWith(`${expectedApiPrefix}/`)) {
+      return null;
+    }
+
     target.search = parsed.search;
     target.hash = "";
     return target.toString();
@@ -100,24 +135,33 @@ function installRuntimeErrorOverlay(win, doc) {
 
 if (typeof window !== "undefined") {
   (() => {
-    if (window.document) {
+    const isDevOverlayEnabled = typeof __SECURO_DEV__ !== "undefined" && __SECURO_DEV__ === true;
+    if (isDevOverlayEnabled && window.document) {
       installRuntimeErrorOverlay(window, window.document);
     }
 
     let settingsPromise = null;
 
     function getInvoke() {
-      return window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke;
+      const rawInvoke = window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke;
+      return rawInvoke ? (cmd, args = {}) => rawInvoke(cmd, args) : null;
     }
 
     function getSettings() {
       const invoke = getInvoke();
       if (!invoke) return Promise.resolve(null);
       if (!settingsPromise) {
-        settingsPromise = invoke("get_connection_settings").catch((error) => {
-          settingsPromise = null;
-          throw error;
-        });
+        settingsPromise = invoke("get_connection_settings")
+          .then((res) => {
+            if (!res?.server_url && !res?.serverUrl) {
+              settingsPromise = null;
+            }
+            return res;
+          })
+          .catch((error) => {
+            settingsPromise = null;
+            throw error;
+          });
       }
       return settingsPromise;
     }
@@ -125,12 +169,13 @@ if (typeof window !== "undefined") {
     const browserFetch = window.fetch.bind(window);
     window.fetch = async (input, init) => {
       const baseHref = window.location.href;
-      if (!isApiRequest(input, baseHref)) return browserFetch(input, init);
-      const settings = await getSettings();
-      const serverUrl = settings?.server_url || settings?.serverUrl;
+      const settings = await getSettings().catch(() => null);
+      const serverUrl = settings?.server_url || settings?.serverUrl || null;
+      if (!isApiRequest(input, baseHref, serverUrl)) return browserFetch(input, init);
       const targetUrl = serverUrl && getApiUrl(input, serverUrl, baseHref);
       if (!targetUrl) return browserFetch(input, init);
       return nativeFetch(targetUrl, {
+        maxRedirections: 5,
         ...init,
         ...getDangerOptions(settings),
       });
@@ -238,9 +283,9 @@ if (typeof window !== "undefined") {
       }
 
       async send(body = null) {
-        const settings = await getSettings();
-        const serverUrl = settings?.server_url || settings?.serverUrl;
-        if (isApiRequest(this._url, window.location.href)) {
+        const settings = await getSettings().catch(() => null);
+        const serverUrl = settings?.server_url || settings?.serverUrl || null;
+        if (isApiRequest(this._url, window.location.href, serverUrl)) {
           this._apiRequest = true;
           this._sendThroughTauri(body, settings, serverUrl);
         } else {
@@ -259,6 +304,7 @@ if (typeof window !== "undefined") {
           method: this._method,
           headers: this._headers,
           signal: this._controller.signal,
+          maxRedirections: 5,
           ...getDangerOptions(settings),
         };
         if (body !== null && body !== undefined && this._method !== "GET" && this._method !== "HEAD") {
