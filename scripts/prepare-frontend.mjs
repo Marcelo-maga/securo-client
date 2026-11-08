@@ -2,134 +2,142 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const REPO = process.env.SECURO_REPOSITORY || 'securo-finance/securo';
-const REF = (process.env.SECURO_REF || '').trim();
-const FRONTEND_PATH = process.env.SECURO_FRONTEND_PATH || 'frontend';
-const FORCE_CLEAN = process.argv.includes('--clean') || process.env.SECURO_CLEAN === '1';
-const TARGET_DIR = path.resolve('.securo-frontend');
-const BRIDGE_DIR = path.resolve('src-tauri/bridge');
+export const REPO = process.env.SECURO_REPOSITORY || 'securo-finance/securo';
+export const REF = (process.env.SECURO_REF || '').trim();
+export const FRONTEND_PATH = process.env.SECURO_FRONTEND_PATH || 'frontend';
+export const FORCE_CLEAN = process.argv.includes('--clean') || process.env.SECURO_CLEAN === '1';
+export const TARGET_DIR = path.resolve('.securo-frontend');
 
-function run(command, cwd = process.cwd()) {
+export function run(command, cwd = process.cwd()) {
   execSync(command, { cwd, stdio: 'inherit' });
 }
 
-if (FORCE_CLEAN && fs.existsSync(TARGET_DIR)) {
-  console.log('Cleaning existing .securo-frontend directory (--clean)...');
-  fs.rmSync(TARGET_DIR, { recursive: true, force: true });
+export function patchRouter(appTsxContent) {
+  if (appTsxContent.includes('BrowserRouter')) {
+    return appTsxContent.replaceAll('BrowserRouter', 'HashRouter');
+  }
+  return appTsxContent;
 }
 
-console.log('--- 1. Fetching Securo Frontend ---');
-if (!fs.existsSync(TARGET_DIR)) {
-  const tempRepo = path.resolve('.securo-frontend-repository');
-  if (fs.existsSync(tempRepo)) {
-    fs.rmSync(tempRepo, { recursive: true, force: true });
+export function patchViteConfig(viteConfigContent) {
+  if (!viteConfigContent.includes('base: "./"')) {
+    return viteConfigContent.replace(/define:\s*\{/, 'base: "./",\n    define: {');
   }
-
-  console.log(`Cloning sparse repository: ${REPO}${REF ? ` (ref: ${REF})` : ''}...`);
-  if (REF) {
-    run(`git clone --no-checkout --depth 1 --filter=blob:none --sparse "https://github.com/${REPO}.git" "${tempRepo}"`);
-    run(`git -C "${tempRepo}" sparse-checkout set "${FRONTEND_PATH}"`);
-    run(`git -C "${tempRepo}" fetch --depth 1 origin "${REF}"`);
-    run(`git -C "${tempRepo}" checkout FETCH_HEAD`);
-  } else {
-    run(`git clone --depth 1 --filter=blob:none --sparse "https://github.com/${REPO}.git" "${tempRepo}"`);
-    run(`git -C "${tempRepo}" sparse-checkout set "${FRONTEND_PATH}"`);
-  }
-
-  const extracted = path.join(tempRepo, FRONTEND_PATH);
-  if (!fs.existsSync(extracted)) {
-    throw new Error(`Frontend directory "${FRONTEND_PATH}" not found in repository`);
-  }
-
-  fs.renameSync(extracted, TARGET_DIR);
-  fs.rmSync(tempRepo, { recursive: true, force: true });
-  console.log('Frontend source ready in .securo-frontend');
-} else {
-  console.log('.securo-frontend directory already present, skipping clone (pass --clean to re-fetch).');
+  return viteConfigContent;
 }
 
-console.log('--- 2. Applying Mobile Adaptations ---');
-const srcDir = path.join(TARGET_DIR, 'src');
-
-// Copy mobile-overrides.css
-const mobileOverridesSrc = path.join(BRIDGE_DIR, 'mobile-overrides.css');
-const mobileOverridesDest = path.join(srcDir, 'mobile-overrides.css');
-fs.copyFileSync(mobileOverridesSrc, mobileOverridesDest);
-
-// Import mobile-overrides.css in main.tsx
-const mainTsxPath = path.join(srcDir, 'main.tsx');
-if (fs.existsSync(mainTsxPath)) {
-  let mainContent = fs.readFileSync(mainTsxPath, 'utf8');
-  if (!mainContent.includes('mobile-overrides.css')) {
-    mainContent += '\nimport "./mobile-overrides.css";\n';
-    fs.writeFileSync(mainTsxPath, mainContent, 'utf8');
-  }
+export function patchOptionalChaining(code) {
+  let content = code;
+  content = content.replace(/(\.[a-zA-Z0-9_]+)\.find\(/g, '$1?.find(');
+  content = content.replace(/([a-zA-Z0-9_]+)\.current\.find\(/g, '$1.current?.find(');
+  content = content.replace(/([a-zA-Z0-9_]+)\.baseline\.find\(/g, '$1.baseline?.find(');
+  content = content.replace(/([a-zA-Z0-9_]+)\.days\.find\(/g, '$1.days?.find(');
+  content = content.replace(/([a-zA-Z0-9_]+)\.installments\.find\(/g, '$1.installments?.find(');
+  content = content.replace(/([a-zA-Z0-9_]+)\.assets\.find\(/g, '$1.assets?.find(');
+  content = content.replace(/([a-zA-Z0-9_]+)\.actions\.find\(/g, '$1.actions?.find(');
+  return content;
 }
 
-// Convert BrowserRouter to HashRouter in App.tsx
-const appTsxPath = path.join(srcDir, 'App.tsx');
-if (fs.existsSync(appTsxPath)) {
-  let appContent = fs.readFileSync(appTsxPath, 'utf8');
-  if (appContent.includes('BrowserRouter')) {
-    appContent = appContent.replaceAll('BrowserRouter', 'HashRouter');
-    fs.writeFileSync(appTsxPath, appContent, 'utf8');
-  }
-}
-
-// Update vite.config.ts for relative base path
-const viteConfigPath = path.join(TARGET_DIR, 'vite.config.ts');
-if (fs.existsSync(viteConfigPath)) {
-  let viteContent = fs.readFileSync(viteConfigPath, 'utf8');
-  if (!viteContent.includes('base: "./"')) {
-    viteContent = viteContent.replace(/define:\s*\{/, 'base: "./",\n    define: {');
-    fs.writeFileSync(viteConfigPath, viteContent, 'utf8');
-  }
-}
-
-// Patch optional chaining for .find calls to prevent undefined runtime errors
-function patchFindCalls(dir) {
+export function patchFindCalls(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       patchFindCalls(fullPath);
     } else if (entry.isFile() && (entry.name.endsWith('.tsx') || entry.name.endsWith('.ts'))) {
-      let content = fs.readFileSync(fullPath, 'utf8');
-      const original = content;
-
-      content = content.replace(/(\.[a-zA-Z0-9_]+)\.find\(/g, '$1?.find(');
-      content = content.replace(/([a-zA-Z0-9_]+)\.current\.find\(/g, '$1.current?.find(');
-      content = content.replace(/([a-zA-Z0-9_]+)\.baseline\.find\(/g, '$1.baseline?.find(');
-      content = content.replace(/([a-zA-Z0-9_]+)\.days\.find\(/g, '$1.days?.find(');
-      content = content.replace(/([a-zA-Z0-9_]+)\.installments\.find\(/g, '$1.installments?.find(');
-      content = content.replace(/([a-zA-Z0-9_]+)\.assets\.find\(/g, '$1.assets?.find(');
-      content = content.replace(/([a-zA-Z0-9_]+)\.actions\.find\(/g, '$1.actions?.find(');
-
-      if (content !== original) {
-        fs.writeFileSync(fullPath, content, 'utf8');
+      const content = fs.readFileSync(fullPath, 'utf8');
+      const patched = patchOptionalChaining(content);
+      if (patched !== content) {
+        fs.writeFileSync(fullPath, patched, 'utf8');
       }
     }
   }
 }
 
-patchFindCalls(srcDir);
-console.log('Frontend code adapted for mobile webview.');
-
-console.log('--- 3. Installing dependencies & building frontend ---');
-const hasNodeModules = fs.existsSync(path.join(TARGET_DIR, 'node_modules'));
-if (!hasNodeModules || FORCE_CLEAN) {
-  if (fs.existsSync(path.join(TARGET_DIR, 'package-lock.json'))) {
-    run('npm ci', TARGET_DIR);
-  } else if (fs.existsSync(path.join(TARGET_DIR, 'pnpm-lock.yaml'))) {
-    run('corepack enable && pnpm install --frozen-lockfile', TARGET_DIR);
-  } else if (fs.existsSync(path.join(TARGET_DIR, 'yarn.lock'))) {
-    run('corepack enable && yarn install --immutable', TARGET_DIR);
-  } else {
-    run('npm install', TARGET_DIR);
+export function prepareFrontend() {
+  if (FORCE_CLEAN && fs.existsSync(TARGET_DIR)) {
+    console.log('Cleaning existing .securo-frontend directory (--clean)...');
+    fs.rmSync(TARGET_DIR, { recursive: true, force: true });
   }
-} else {
-  console.log('Existing .securo-frontend/node_modules detected, skipping package install.');
+
+  console.log('--- 1. Fetching Securo Frontend ---');
+  if (!fs.existsSync(TARGET_DIR)) {
+    const tempRepo = path.resolve('.securo-frontend-repository');
+    if (fs.existsSync(tempRepo)) {
+      fs.rmSync(tempRepo, { recursive: true, force: true });
+    }
+
+    console.log(`Cloning sparse repository: ${REPO}${REF ? ` (ref: ${REF})` : ''}...`);
+    if (REF) {
+      run(`git clone --no-checkout --depth 1 --filter=blob:none --sparse "https://github.com/${REPO}.git" "${tempRepo}"`);
+      run(`git -C "${tempRepo}" sparse-checkout set "${FRONTEND_PATH}"`);
+      run(`git -C "${tempRepo}" fetch --depth 1 origin "${REF}"`);
+      run(`git -C "${tempRepo}" checkout FETCH_HEAD`);
+    } else {
+      run(`git clone --depth 1 --filter=blob:none --sparse "https://github.com/${REPO}.git" "${tempRepo}"`);
+      run(`git -C "${tempRepo}" sparse-checkout set "${FRONTEND_PATH}"`);
+    }
+
+    const extracted = path.join(tempRepo, FRONTEND_PATH);
+    if (!fs.existsSync(extracted)) {
+      throw new Error(`Frontend directory "${FRONTEND_PATH}" not found in repository`);
+    }
+
+    fs.renameSync(extracted, TARGET_DIR);
+    fs.rmSync(tempRepo, { recursive: true, force: true });
+    console.log('Frontend source ready in .securo-frontend');
+  } else {
+    console.log('.securo-frontend directory already present, skipping clone (pass --clean to re-fetch).');
+  }
+
+  console.log('--- 2. Applying Adaptations ---');
+  const srcDir = path.join(TARGET_DIR, 'src');
+
+  // Convert BrowserRouter to HashRouter in App.tsx
+  const appTsxPath = path.join(srcDir, 'App.tsx');
+  if (fs.existsSync(appTsxPath)) {
+    const appContent = fs.readFileSync(appTsxPath, 'utf8');
+    const patchedApp = patchRouter(appContent);
+    if (patchedApp !== appContent) {
+      fs.writeFileSync(appTsxPath, patchedApp, 'utf8');
+    }
+  }
+
+  // Update vite.config.ts for relative base path
+  const viteConfigPath = path.join(TARGET_DIR, 'vite.config.ts');
+  if (fs.existsSync(viteConfigPath)) {
+    const viteContent = fs.readFileSync(viteConfigPath, 'utf8');
+    const patchedVite = patchViteConfig(viteContent);
+    if (patchedVite !== viteContent) {
+      fs.writeFileSync(viteConfigPath, patchedVite, 'utf8');
+    }
+  }
+
+  // Patch optional chaining for .find calls to prevent undefined runtime errors
+  patchFindCalls(srcDir);
+  console.log('Frontend code adapted for mobile webview.');
+
+  console.log('--- 3. Installing dependencies & building frontend ---');
+  const hasNodeModules = fs.existsSync(path.join(TARGET_DIR, 'node_modules'));
+  if (!hasNodeModules || FORCE_CLEAN) {
+    if (fs.existsSync(path.join(TARGET_DIR, 'package-lock.json'))) {
+      run('npm ci', TARGET_DIR);
+    } else if (fs.existsSync(path.join(TARGET_DIR, 'pnpm-lock.yaml'))) {
+      run('corepack enable && pnpm install --frozen-lockfile', TARGET_DIR);
+    } else if (fs.existsSync(path.join(TARGET_DIR, 'yarn.lock'))) {
+      run('corepack enable && yarn install --immutable', TARGET_DIR);
+    } else {
+      run('npm install', TARGET_DIR);
+    }
+  } else {
+    console.log('Existing .securo-frontend/node_modules detected, skipping package install.');
+  }
+
+  run('npm run build', TARGET_DIR);
+  console.log('Securo frontend built successfully!');
 }
 
-run('npm run build', TARGET_DIR);
-console.log('Securo frontend built successfully!');
+const isDirectExecution = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+if (isDirectExecution) {
+  prepareFrontend();
+}
