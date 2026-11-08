@@ -26,9 +26,10 @@ on:
       android_arch:
         description: "Android target architecture (when building Android)"
         required: false
-        default: "aarch64"
+        default: "all"
         type: choice
         options:
+          - "all"
           - "aarch64"
           - "armv7"
           - "x86_64"
@@ -42,6 +43,7 @@ concurrency:
 
 env:
   SECURO_REPOSITORY: securo-finance/securo
+  SECURO_REF: ""
   SECURO_FRONTEND_PATH: frontend
   NODE_VERSION: "22"
   # Rust CI performance optimizations
@@ -53,10 +55,53 @@ env:
 
 jobs:
   # =========================================================================
+  # 0. PREPARE & STAGE FRONTEND ONCE (Shared across all Desktop & Mobile jobs)
+  # =========================================================================
+  prepare-frontend:
+    name: Prepare & Stage Frontend Bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout native client
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install native client dependencies
+        run: npm ci
+
+      - name: Cache upstream Securo npm packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-upstream-frontend-${{ runner.os }}-${{ env.SECURO_REF || 'head' }}
+          restore-keys: |
+            npm-upstream-frontend-${{ runner.os }}-
+
+      - name: Clone, adapt, and build upstream Securo frontend
+        run: npm run frontend:prepare
+
+      - name: Bundle HTTP bridge and stage frontend dist
+        run: npm run frontend:stage
+
+      - name: Upload staged frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: staged-frontend
+          path: src/
+          include-hidden-files: true
+          retention-days: 1
+
+  # =========================================================================
   # 1. WINDOWS DESKTOP BUILD (Native NSIS Setup EXE & WiX MSI Installers)
   # =========================================================================
   windows:
     name: Windows Desktop (x64)
+    needs: [prepare-frontend]
     if: github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'windows'
     runs-on: windows-latest
     steps:
@@ -70,8 +115,20 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Install native client dependencies
+      - name: Install native client CLI dependencies
         run: npm ci
+
+      - name: Download pre-staged frontend bundle
+        shell: pwsh
+        run: if (Test-Path src) { Remove-Item -Recurse -Force src }
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: staged-frontend
+          path: src
+
+      - name: Verify staged frontend integrity
+        run: node -e "const fs = require('node:fs'); if (!fs.existsSync('src/app.html') || !fs.existsSync('src/securo-http-bridge.js')) { throw new Error('Staged frontend bundle incomplete'); }"
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -82,25 +139,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "src-tauri -> target"
-
-      - name: Cache Securo frontend dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.npm
-            ~\AppData\Local\npm-cache
-          key: npm-frontend-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            npm-frontend-${{ runner.os }}-
-
-      - name: Prepare and build Securo frontend
-        run: npm run frontend:prepare
-
-      - name: Stage frontend for Tauri
-        run: npm run frontend:stage
-
-      - name: Generate application icons
-        run: npm run icons:generate
+          key: windows-x64
 
       - name: Build Windows Desktop (NSIS & MSI)
         shell: pwsh
@@ -127,12 +166,17 @@ jobs:
           retention-days: 14
 
   # =========================================================================
-  # 2. ANDROID MOBILE BUILD (APK)
+  # 2. ANDROID MOBILE BUILD (APK Matrix: arm64-v8a, armeabi-v7a, x86_64)
   # =========================================================================
   android:
-    name: Android APK (${{ inputs.android_arch || 'aarch64' }})
+    name: Android APK (${{ matrix.arch }})
+    needs: [prepare-frontend]
     if: github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'android'
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ (github.event_name == 'push' || inputs.android_arch == 'all' || inputs.android_arch == '') && fromJSON('["aarch64", "armv7", "x86_64"]') || fromJSON(format('["{0}"]', inputs.android_arch)) }}
     steps:
       - name: Checkout native client
         uses: actions/checkout@v4
@@ -141,7 +185,7 @@ jobs:
         id: target-map
         shell: bash
         run: |
-          ARCH="${{ inputs.android_arch || 'aarch64' }}"
+          ARCH="${{ matrix.arch }}"
           case "$ARCH" in
             armv7)
               echo "rust_target=armv7-linux-androideabi" >> $GITHUB_OUTPUT
@@ -164,8 +208,20 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Install native client dependencies
+      - name: Install native client CLI dependencies
         run: npm ci
+
+      - name: Clean default src before downloading staged frontend
+        run: rm -rf src
+
+      - name: Download pre-staged frontend bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: staged-frontend
+          path: src
+
+      - name: Verify staged frontend integrity
+        run: node -e "const fs = require('node:fs'); if (!fs.existsSync('src/app.html') || !fs.existsSync('src/securo-http-bridge.js')) { throw new Error('Staged frontend bundle incomplete'); }"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -191,28 +247,12 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "src-tauri -> target"
-
-      - name: Cache Securo frontend dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-frontend-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            npm-frontend-${{ runner.os }}-
-
-      - name: Prepare and build Securo frontend
-        run: npm run frontend:prepare
-
-      - name: Stage frontend for Tauri
-        run: npm run frontend:stage
+          key: android-${{ matrix.arch }}
 
       - name: Initialize Android project
         run: npm run tauri -- android init
 
-      - name: Generate and configure application icons
-        run: npm run icons:generate
-
-      - name: Configure Android permissions and insets
+      - name: Configure Android permissions, icons, and insets
         run: npm run android:configure
 
       - name: Build Android APK
@@ -256,6 +296,8 @@ jobs:
           fi
 
       - name: Package artifacts and calculate SHA-256 checksums
+        env:
+          TAURI_TARGET: ${{ steps.target-map.outputs.tauri_target }}
         run: npm run artifacts:package
 
       - name: Upload APK build artifacts
@@ -268,12 +310,12 @@ jobs:
   # =========================================================================
   # 3. FUTURE DESKTOP PLATFORMS (macOS & Linux - Pre-configured architecture)
   # To activate in the future:
-  # - Set `if: true` or extend `inputs.platform` options
-  # - For macOS: Configure Apple Developer Certificate & Notarization secrets
-  # - For Linux: AppImage and Debian packages will generate automatically
+  # - Uncomment jobs, extend `inputs.platform`, and add to `publish-release.needs`
+  # - Both consume `staged-frontend` directly without re-cloning or rebuilding UI
   # =========================================================================
   # macos:
   #   name: macOS Desktop (Universal)
+  #   needs: [prepare-frontend]
   #   if: false # Activated when macOS releases are officially scheduled
   #   runs-on: macos-latest
   #   steps:
@@ -282,20 +324,20 @@ jobs:
   #       with:
   #         node-version: ${{ env.NODE_VERSION }}
   #         cache: npm
+  #         cache-dependency-path: package-lock.json
   #     - run: npm ci
+  #     - run: rm -rf src
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         name: staged-frontend
+  #         path: src
   #     - uses: dtolnay/rust-toolchain@stable
   #       with:
   #         targets: x86_64-apple-darwin, aarch64-apple-darwin
   #     - uses: swatinem/rust-cache@v2
   #       with:
   #         workspaces: "src-tauri -> target"
-  #     - uses: actions/cache@v4
-  #       with:
-  #         path: ~/.npm
-  #         key: npm-frontend-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-  #     - run: npm run frontend:prepare
-  #     - run: npm run frontend:stage
-  #     - run: npm run icons:generate
+  #         key: macos-universal
   #     - name: Build macOS Universal DMG
   #       run: npm run tauri -- build --target universal-apple-darwin
   #     - run: npm run artifacts:package
@@ -307,6 +349,7 @@ jobs:
 
   # linux:
   #   name: Linux Desktop (DEB & AppImage)
+  #   needs: [prepare-frontend]
   #   if: false # Activated when Linux releases are officially scheduled
   #   runs-on: ubuntu-22.04
   #   steps:
@@ -319,20 +362,20 @@ jobs:
   #       with:
   #         node-version: ${{ env.NODE_VERSION }}
   #         cache: npm
+  #         cache-dependency-path: package-lock.json
   #     - run: npm ci
+  #     - run: rm -rf src
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         name: staged-frontend
+  #         path: src
   #     - uses: dtolnay/rust-toolchain@stable
   #       with:
   #         targets: x86_64-unknown-linux-gnu
   #     - uses: swatinem/rust-cache@v2
   #       with:
   #         workspaces: "src-tauri -> target"
-  #     - uses: actions/cache@v4
-  #       with:
-  #         path: ~/.npm
-  #         key: npm-frontend-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-  #     - run: npm run frontend:prepare
-  #     - run: npm run frontend:stage
-  #     - run: npm run icons:generate
+  #         key: linux-x64
   #     - name: Build Linux Bundles (.deb and .AppImage)
   #       run: npm run tauri -- build
   #     - run: npm run artifacts:package
