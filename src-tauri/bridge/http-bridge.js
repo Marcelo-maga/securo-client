@@ -13,7 +13,7 @@ function normalizeRelativeApiPrefix(raw) {
 export function isApiRequest(input, baseHref = "http://tauri.localhost/", serverUrl = null) {
   if (!input) return false;
   const urlStr = typeof input === "string" ? input : input.url || "";
-  if (!urlStr || hasEncodedDotSegment(urlStr)) return false;
+  if (!urlStr || hasEncodedDotSegment(urlStr) || urlStr.includes('\\') || urlStr.includes('\r') || urlStr.includes('\n')) return false;
 
   const normalized = normalizeRelativeApiPrefix(urlStr);
 
@@ -55,7 +55,7 @@ export function isApiRequest(input, baseHref = "http://tauri.localhost/", server
 export function getApiUrl(input, serverUrl, baseHref = "http://tauri.localhost/") {
   if (!serverUrl || !input) return null;
   const raw = typeof input === "string" ? input : input.url || "";
-  if (!raw || hasEncodedDotSegment(raw)) return null;
+  if (!raw || hasEncodedDotSegment(raw) || raw.includes('\\') || raw.includes('\r') || raw.includes('\n')) return null;
 
   const normalized = normalizeRelativeApiPrefix(raw);
 
