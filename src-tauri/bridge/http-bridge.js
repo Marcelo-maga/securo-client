@@ -10,8 +10,34 @@ function normalizeRelativeApiPrefix(raw) {
     : raw;
 }
 
-export function isApiRequest(input, baseHref = "http://tauri.localhost/", serverUrl = null) {
+export function isInternalIpcUrl(input) {
   if (!input) return false;
+  let raw = "";
+  if (typeof input === "string") {
+    raw = input;
+  } else if (typeof input === "object") {
+    if (typeof input.url === "string") {
+      raw = input.url;
+    } else if (typeof input.href === "string") {
+      raw = input.href;
+    } else if (typeof input.toString === "function") {
+      try {
+        raw = input.toString();
+      } catch {
+        raw = "";
+      }
+    }
+  }
+  if (!raw) return false;
+  return (
+    raw.startsWith("ipc:") ||
+    raw.startsWith("http://ipc.localhost") ||
+    raw.startsWith("https://ipc.localhost")
+  );
+}
+
+export function isApiRequest(input, baseHref = "http://tauri.localhost/", serverUrl = null) {
+  if (!input || isInternalIpcUrl(input)) return false;
   const urlStr = typeof input === "string" ? input : input.url || "";
   if (!urlStr || hasEncodedDotSegment(urlStr) || urlStr.includes('\\') || urlStr.includes('\r') || urlStr.includes('\n')) return false;
 
@@ -53,7 +79,7 @@ export function isApiRequest(input, baseHref = "http://tauri.localhost/", server
 }
 
 export function getApiUrl(input, serverUrl, baseHref = "http://tauri.localhost/") {
-  if (!serverUrl || !input) return null;
+  if (!serverUrl || !input || isInternalIpcUrl(input)) return null;
   const raw = typeof input === "string" ? input : input.url || "";
   if (!raw || hasEncodedDotSegment(raw) || raw.includes('\\') || raw.includes('\r') || raw.includes('\n')) return null;
 
@@ -140,6 +166,7 @@ if (typeof window !== "undefined") {
       installRuntimeErrorOverlay(window, window.document);
     }
 
+    let cachedSettings = null;
     let settingsPromise = null;
 
     function getInvoke() {
@@ -148,12 +175,15 @@ if (typeof window !== "undefined") {
     }
 
     function getSettings() {
+      if (cachedSettings) return Promise.resolve(cachedSettings);
       const invoke = getInvoke();
       if (!invoke) return Promise.resolve(null);
       if (!settingsPromise) {
         settingsPromise = invoke("get_connection_settings")
           .then((res) => {
-            if (!res?.server_url && !res?.serverUrl) {
+            if (res?.server_url || res?.serverUrl) {
+              cachedSettings = res;
+            } else {
               settingsPromise = null;
             }
             return res;
@@ -167,18 +197,31 @@ if (typeof window !== "undefined") {
     }
 
     const browserFetch = window.fetch.bind(window);
-    window.fetch = async (input, init) => {
-      const baseHref = window.location.href;
-      const settings = await getSettings().catch(() => null);
-      const serverUrl = settings?.server_url || settings?.serverUrl || null;
-      if (!isApiRequest(input, baseHref, serverUrl)) return browserFetch(input, init);
-      const targetUrl = serverUrl && getApiUrl(input, serverUrl, baseHref);
-      if (!targetUrl) return browserFetch(input, init);
-      return nativeFetch(targetUrl, {
-        maxRedirections: 5,
-        ...init,
-        ...getDangerOptions(settings),
-      });
+    window.fetch = (input, init) => {
+      // 1. Synchronously bypass internal Tauri IPC requests to avoid deadlock & recursion
+      if (isInternalIpcUrl(input)) {
+        return browserFetch(input, init);
+      }
+
+      // 2. Synchronously bypass non-API requests (static frontend bundles, fonts, locales)
+      const rawUrl = typeof input === "string" ? input : input?.url || "";
+      if (rawUrl && !rawUrl.includes("api")) {
+        return browserFetch(input, init);
+      }
+
+      return (async () => {
+        const baseHref = window.location.href;
+        const settings = cachedSettings || (await getSettings().catch(() => null));
+        const serverUrl = settings?.server_url || settings?.serverUrl || null;
+        if (!isApiRequest(input, baseHref, serverUrl)) return browserFetch(input, init);
+        const targetUrl = serverUrl && getApiUrl(input, serverUrl, baseHref);
+        if (!targetUrl) return browserFetch(input, init);
+        return nativeFetch(targetUrl, {
+          maxRedirections: 5,
+          ...init,
+          ...getDangerOptions(settings),
+        });
+      })();
     };
 
     const BrowserXHR = window.XMLHttpRequest;
@@ -249,7 +292,16 @@ if (typeof window !== "undefined") {
       open(method, url, async = true, user, password) {
         this._method = method;
         this._url = url;
-        this._apiRequest = isApiRequest(url, window.location.href);
+        if (isInternalIpcUrl(url)) {
+          this._apiRequest = false;
+          return this._browserXhr.open(method, url, async, user, password);
+        }
+        const rawUrl = typeof url === "string" ? url : "";
+        if (rawUrl && !rawUrl.includes("api")) {
+          this._apiRequest = false;
+          return this._browserXhr.open(method, url, async, user, password);
+        }
+        this._apiRequest = isApiRequest(url, window.location.href, cachedSettings?.server_url || cachedSettings?.serverUrl || null);
         if (!this._apiRequest) return this._browserXhr.open(method, url, async, user, password);
         this._state = 1;
         this._emit("readystatechange");
@@ -283,7 +335,16 @@ if (typeof window !== "undefined") {
       }
 
       async send(body = null) {
-        const settings = await getSettings().catch(() => null);
+        if (isInternalIpcUrl(this._url)) {
+          this._apiRequest = false;
+          return this._browserXhr.send(body);
+        }
+        const rawUrl = typeof this._url === "string" ? this._url : "";
+        if (rawUrl && !rawUrl.includes("api")) {
+          this._apiRequest = false;
+          return this._browserXhr.send(body);
+        }
+        const settings = cachedSettings || (await getSettings().catch(() => null));
         const serverUrl = settings?.server_url || settings?.serverUrl || null;
         if (isApiRequest(this._url, window.location.href, serverUrl)) {
           this._apiRequest = true;

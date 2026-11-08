@@ -6,6 +6,7 @@ import {
   isApiRequest,
   getApiUrl,
   getDangerOptions,
+  isInternalIpcUrl,
 } from '../src-tauri/bridge/http-bridge.js';
 
 describe('Native HTTP Bridge (securo-http-bridge) & Security Policy', () => {
@@ -74,6 +75,19 @@ describe('Native HTTP Bridge (securo-http-bridge) & Security Policy', () => {
   });
 
   describe('Tauri Internal IPC Bypass and Fast-Path Routing', () => {
+    test('isInternalIpcUrl correctly detects IPC schemes and hostnames', () => {
+      assert.equal(isInternalIpcUrl('http://ipc.localhost/get_connection_settings'), true);
+      assert.equal(isInternalIpcUrl('https://ipc.localhost/test'), true);
+      assert.equal(isInternalIpcUrl('ipc://localhost/invoke'), true);
+      assert.equal(isInternalIpcUrl('ipc:test'), true);
+      assert.equal(isInternalIpcUrl(new URL('http://ipc.localhost/test')), true);
+      assert.equal(isInternalIpcUrl({ url: 'http://ipc.localhost/test' }), true);
+      assert.equal(isInternalIpcUrl('/api/accounts'), false);
+      assert.equal(isInternalIpcUrl('https://securo.homelab.lan:8443/api/accounts'), false);
+      assert.equal(isInternalIpcUrl(null), false);
+      assert.equal(isInternalIpcUrl(undefined), false);
+    });
+
     test('isApiRequest strictly ignores internal Tauri IPC schemes and domains', () => {
       assert.equal(isApiRequest('http://ipc.localhost/get_connection_settings'), false);
       assert.equal(isApiRequest('https://ipc.localhost/test'), false);
