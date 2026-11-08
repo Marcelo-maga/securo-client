@@ -11,6 +11,17 @@ We provide security updates and patches for the following versions of Securo Cli
 
 ---
 
+## Security Architecture Highlights
+
+Securo Client enforces defense-in-depth protections using official Tauri v2 security primitives:
+
+- **Dynamic Per-Server HTTP ACL (`dynamic-acl`):** Static capabilities (`src-tauri/capabilities/default.json`) contain zero wildcard `http://*` or `https://*` permissions. Runtime HTTP access via `@tauri-apps/plugin-http` is dynamically scoped exclusively to `{server_url}/api` and `{server_url}/api/*` using `tauri::ipc::CapabilityBuilder`.
+- **Configuration Context Isolation:** Commands that modify connection settings (`connect_server`, `save_server_url`, `clear_server_url`, `set_auto_connect`) verify that the caller is the `/config/config.html` setup view, preventing scripts in the main application view from altering the allowed server origin.
+- **OS Trust Store Support (`rustls-tls-native-roots`):** Private CAs installed in the operating system trust store (e.g., `mkcert`, Caddy Internal CA, enterprise CAs) are trusted natively without disabling certificate verification. Opt-in self-signed bypass (`allow_invalid_certs`) remains disabled by default and should only be enabled over trusted networks or encrypted VPNs (Tailscale/WireGuard).
+- **Strict Content Security Policy (CSP):** Inline scripts, `unsafe-eval`, and external browser `connect-src` origins are blocked via `tauri.conf.json`.
+
+---
+
 ## Reporting a Vulnerability
 
 The Securo Client maintainers take security seriously. If you discover a security vulnerability in this project, please report it responsibly:

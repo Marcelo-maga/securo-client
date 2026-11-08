@@ -29,6 +29,7 @@
     "SERVER_UNREACHABLE": "We could not reach this server. Check the URL and try again.",
     "SERVER_HTTP_ERROR": "The server returned HTTP {status}.",
     "CONFIG_SAVE_FAILED": "We could not save the local configuration.",
+    "PROXY_FORBIDDEN": "This request was blocked by the client security policy.",
     "UNKNOWN": "We could not connect to this server."
   }
 }

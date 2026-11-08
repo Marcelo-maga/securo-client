@@ -35,6 +35,7 @@ const LOCALES = {
       SERVER_UNREACHABLE: "Não foi possível alcançar o servidor. Verifique a URL e tente novamente.",
       SERVER_HTTP_ERROR: "O servidor respondeu com HTTP {status}.",
       CONFIG_SAVE_FAILED: "Não foi possível salvar a configuração local.",
+      PROXY_FORBIDDEN: "Esta requisição foi bloqueada pela política de segurança do cliente.",
       UNKNOWN: "Não foi possível conectar ao servidor."
     }
   },
@@ -69,6 +70,7 @@ const LOCALES = {
       SERVER_UNREACHABLE: "We could not reach this server. Check the URL and try again.",
       SERVER_HTTP_ERROR: "The server returned HTTP {status}.",
       CONFIG_SAVE_FAILED: "We could not save the local configuration.",
+      PROXY_FORBIDDEN: "This request was blocked by the client security policy.",
       UNKNOWN: "We could not connect to this server."
     }
   }

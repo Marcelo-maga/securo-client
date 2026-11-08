@@ -10,8 +10,8 @@ Securo is a modern, self-hosted personal finance platform. The primary goal of `
 
 ### Core Objectives:
 1. **Zero Intermediate Infrastructure:** Direct, encrypted communication between the client device and the user's self-hosted server.
-2. **Homelab First:** First-class support for self-signed TLS certificates, LAN IP addresses, and private VPN hostnames (Tailscale, WireGuard).
-3. **Bypass WebView Network Restrictions:** Overcome mobile and desktop browser sandbox limitations (CORS, mixed content, certificate pinning) via a native Rust networking layer.
+2. **Homelab First:** First-class support for OS-trusted private CAs (`mkcert`, Caddy CA, enterprise roots via `rustls-tls-native-roots`), opt-in self-signed TLS certificates, LAN IP addresses, and private VPN hostnames (Tailscale, WireGuard).
+3. **Least-Privilege Native Networking:** Overcome browser sandbox limitations (CORS, mixed content) via `@tauri-apps/plugin-http` paired with Tauri v2's runtime `dynamic-acl` (`CapabilityBuilder`) so only `{server_url}/api/*` is ever authorized.
 4. **Automated Frontend Synchronization:** A repeatable pipeline that ingests, patches, and bundles the official Securo web frontend without manual code divergence.
 5. **Native Look & Feel:** Edge-to-edge system insets on mobile, native window chrome on desktop, and hardware-accelerated rendering.
 
@@ -22,7 +22,7 @@ Securo is a modern, self-hosted personal finance platform. The primary goal of `
 ```mermaid
 graph TD
     subgraph Device["Android / Windows Desktop Host"]
-        subgraph WebViewSandbox["WebView Runtime (Chromium / WebView2)"]
+        subgraph WebViewSandbox["WebView Runtime (Strict CSP: script-src 'self', connect-src 'self' ipc:)"]
             UI["Official Securo UI (React + HashRouter)"]
             CSS["Mobile & Desktop CSS Overrides"]
             Bridge["securo-http-bridge.js (fetch / XHR Interceptor)"]
@@ -32,14 +32,17 @@ graph TD
         end
 
         subgraph TauriRuntime["Tauri v2 Rust Core"]
-            IPC["Tauri IPC Message Channel"]
-            HttpPlugin["tauri-plugin-http (Reqwest + Rustls)"]
+            ACL["Tauri Dynamic ACL (CapabilityBuilder: {server_url}/api/*)"]
+            HttpPlugin["tauri-plugin-http (Reqwest + Rustls Native Roots)"]
             StorePlugin["tauri-plugin-store (Persistent Settings)"]
-            Cmds["Rust Commands (commands.rs)"]
+            Cmds["Config-Guarded Commands (commands.rs)"]
 
-            Bridge -->|"IPC Invoke"| HttpPlugin
+            Bridge -->|"IPC Invoke"| ACL
+            ACL -->|"Scoped Allow"| HttpPlugin
             Bridge -->|"Get Connection Settings"| Cmds
-            Cmds -->|"Read/Write Server URL & TLS flags"| StorePlugin
+            SetupUI -->|"Connect & Grant Scope"| Cmds
+            Cmds -->|"Read/Write Server URL"| StorePlugin
+            Cmds -->|"add_capability({server_url}/api/*)"| ACL
         end
     end
 
@@ -47,50 +50,25 @@ graph TD
         Backend["Securo Backend API (/api/*)"]
     end
 
-    HttpPlugin -->|"Native TCP/TLS Socket (No CORS, Custom Certs)"| Backend
+    HttpPlugin -->|"Native TCP/TLS Socket"| Backend
 ```
 
 ---
 
-## 3. The Native HTTP Bridge
+## 3. The Native HTTP Bridge & Runtime ACL Scoping
 
-### The Problem: Mobile WebView Sandbox Limitations
+### The Problem: Mobile WebView Sandbox vs. Wildcard Capabilities
 When running single-page applications (SPAs) inside WebViews:
-- **CORS Enforcements:** WebViews treat requests from local origins (`tauri://localhost` or `http://localhost`) to remote server endpoints as cross-origin requests. If the remote reverse proxy or server lacks explicit CORS headers, the WebView blocks the request.
-- **TLS & Certificate Rejection:** Internal WebViews strictly prohibit network traffic to servers using self-signed SSL/TLS certificates or internal enterprise root CAs.
-- **Mixed Content Policies:** WebViews block plain HTTP traffic if the initial asset loader resolves over HTTPS.
+- **CORS Enforcements:** WebViews treat requests from local origins (`tauri://localhost` or `http://tauri.localhost`) to remote server endpoints as cross-origin requests.
+- **Private CAs & Self-Signed TLS:** Internal WebViews often reject homelab root CAs or self-signed certificates.
+- **Static Wildcard Risk:** Allowing `http://*` and `https://*` statically in `capabilities/default.json` with `csp: null` would expose arbitrary cross-origin network access if an XSS vulnerability occurred in the frontend.
 
-### The Solution: Transparent Native Interception
-Instead of running requests through the WebView's browser engine, `src-tauri/bridge/http-bridge.js` monkey-patches the global `window.fetch` and `window.XMLHttpRequest` APIs:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as User
-    participant Frontend as React App (UI)
-    participant Bridge as http-bridge.js
-    participant IPC as Tauri IPC
-    participant Rust as Tauri Rust (Reqwest)
-    participant Server as Securo Server
-
-    User->>Frontend: Perform Action (e.g. View Accounts)
-    Frontend->>Bridge: window.fetch("/api/accounts")
-    Bridge->>Bridge: Detects /api/ path & rewrites to Server URL
-    Bridge->>IPC: Invoke native HTTP client with TLS settings
-    IPC->>Rust: reqwest::Client::send()
-    Rust->>Server: Native TLS/TCP HTTP Request
-    Server-->>Rust: HTTP 200 OK + JSON Payload
-    Rust-->>IPC: Response Stream / Headers / Body
-    IPC-->>Bridge: Native Response Wrapped
-    Bridge-->>Frontend: Resolves Standard Response Object
-    Frontend->>User: Displays Data in UI
-```
-
-### Key Capabilities of the Bridge:
-- **Universal API Interception:** Automatically intercepts `/api/*`, relative URLs, and explicit matches to the configured server host.
-- **Custom Certificate Handling:** If `allow_invalid_certs` is enabled, flags `danger.acceptInvalidCerts: true` and `danger.acceptInvalidHostnames: true` are applied directly to the native socket.
-- **Binary & Form Data Handling:** Handles standard JSON, `multipart/form-data`, Blobs, `ArrayBuffer`, and URL-encoded payloads seamlessly.
-- **Zero React Code Changes:** The frontend application remains completely agnostic of the bridge; it continues invoking standard `fetch()` or `axios`.
+### The Solution: `@tauri-apps/plugin-http` + Tauri `dynamic-acl` + Strict CSP
+1. **Zero Static HTTP Wildcards:** `src-tauri/capabilities/default.json` grants only `core:default`.
+2. **Dynamic Per-Server Scope (`CapabilityBuilder`):** On startup (`lib.rs`) and whenever a server is paired (`connect_server` / `save_server_url` in `commands.rs`), Tauri's `CapabilityBuilder` registers `http:default` scoped strictly to `{server_url}/api` and `{server_url}/api/*` on the `main` window.
+3. **Configuration Context Guard:** Commands that mutate connection settings (`connect_server`, `save_server_url`, `clear_server_url`, `set_auto_connect`) verify that the caller WebView is on `/config/config.html`, preventing code inside `app.html` from repointing `server_url` to an external host.
+4. **Native OS Root Certificates:** `tauri-plugin-http` and `reqwest` enable `rustls-tls-native-roots`, automatically trusting private CAs installed in the OS trust store without needing `allow_invalid_certs`.
+5. **Strict CSP (`tauri.conf.json`):** Enforces `default-src 'self'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'`, blocking inline script injection, `eval`, and direct browser exfiltration.
 
 ---
 
@@ -111,27 +89,25 @@ flowchart LR
 ### 1. `prepare-frontend.mjs`
 - Performs a sparse clone (`--filter=blob:none --sparse`) of the official Securo repository (supporting optional ref pinning via `SECURO_REF`), pulling only the `frontend/` directory to save bandwidth and disk space.
 - Replaces `BrowserRouter` with `HashRouter` inside `App.tsx`.
-  > *Why HashRouter?* Mobile and desktop WebViews load local assets via relative file protocols or virtual origins (`http://tauri.localhost`). Using HTML5 history API navigation results in 404 errors when deep-linking or refreshing the view. Hash routing (`/#/accounts`) guarantees route persistence.
 - Adjusts Vite configuration (`base: "./"`) so all compiled JS/CSS script tags resolve relative to the WebView asset root.
-- Scans and patches runtime optional chaining (`.find(...)` -> `?.find(...)`) on transient financial state arrays to eliminate undefined reference errors during initial state hydration.
+- Scans and patches runtime optional chaining (`.find(...)` -> `?.find(...)`) on transient financial state arrays.
 
 ### 2. `stage-frontend.mjs`
 - Archives the local fallback configuration screen (`src/config/`).
 - Populates `src/` with the compiled Vite production bundle.
-- Uses `esbuild` to compile `src-tauri/bridge/http-bridge.js` into an optimized single-file IIFE bundle (`securo-http-bridge.js`).
-- Injects a resilient DOM-safe JavaScript error boundary, safe-area viewport configurations (`viewport-fit=cover`), and the bridge script into the HTML header.
+- Copies `bootstrap.html` and external `bootstrap.js` (keeping all HTML entrypoints free of inline scripts for `script-src 'self'` CSP compliance).
+- Uses `esbuild` to compile `src-tauri/bridge/http-bridge.js` (including the DOM error boundary) into `securo-http-bridge.js`.
+- Injects `viewport-fit=cover`, `mobile-overrides.css`, and `securo-http-bridge.js` into `app.html`.
 
 ---
 
 ## 5. OS Native Integrations
 
 ### Android Edge-to-Edge & Safe Area Management
-Modern Android devices feature edge-to-edge screens with camera punch-holes, curved corners, and dynamic gesture navigation bars. Rather than applying native padding on Android's root view (which creates unstyled letterboxing), edge-to-edge rendering allows the WebView to span the entire display. The web layout then respects device cutouts dynamically through standard CSS safe-area insets (`env(safe-area-inset-top)`, `env(safe-area-inset-bottom)`) defined in `mobile-overrides.css`.
+Edge-to-edge rendering allows the WebView to span the entire display while respecting device cutouts dynamically through standard CSS safe-area insets (`env(safe-area-inset-top)`, `env(safe-area-inset-bottom)`) defined in `mobile-overrides.css`.
 
 ### Windows Native Runtime & Window Management
-On Windows, Tauri utilizes the evergreen Microsoft Edge WebView2 runtime. In `lib.rs`, the application checks whether a valid `server_url` and `auto_connect` preference have already been saved in local storage:
-- If a server URL exists and `auto_connect` is enabled, the main dashboard window (`main`) is presented immediately.
-- Otherwise, the window loads the dedicated server configuration screen (`config`), guiding the user through initial instance pairing before seamlessly switching to the financial dashboard.
+On Windows, Tauri utilizes the evergreen Microsoft Edge WebView2 runtime. In `lib.rs`, if a `server_url` exists and `auto_connect` is enabled, the main dashboard window (`main`) is presented immediately; otherwise, the `config` window guides the user through initial instance pairing.
 
 ---
 
@@ -140,25 +116,22 @@ On Windows, Tauri utilizes the evergreen Microsoft Edge WebView2 runtime. In `li
 When connecting to an instance in `commands.rs`:
 
 1. **URL Normalization:**
-   - Trims whitespace and guarantees a protocol scheme (`https://` default if omitted).
-   - Validates that no credentials (username/password) or fragment hashes are present in the URL.
-   - Cleans trailing slashes and redundant `/api` suffixes to establish a canonical base URL.
+   - Trims whitespace and defaults to `https://` if omitted.
+   - Rejects embedded credentials (username/password) or URL fragments.
+   - Strips trailing slashes and redundant `/api` suffixes.
 
 2. **Probe Fallback Matrix:**
-   To remain compatible with various reverse proxies, custom routing setups, and API versions, the client tests endpoints in order:
    1. `GET {base_url}/api/health`
    2. `GET {base_url}/api/info`
    3. `GET {base_url}/health`
    4. `GET {base_url}/` (Fallback root status probe)
 
-3. **Persistent Storage:**
-   Upon receiving a valid HTTP response, the verified URL and TLS parameters are committed to `config.json` via `tauri-plugin-store`.
+3. **Persistent Storage & Scope Activation:**
+   Upon receiving a valid HTTP response, the verified URL is granted dynamic HTTP scope (`{base_url}/api/*`) and saved to `config.json` via `tauri-plugin-store`.
 
 ---
 
 ## 7. Multi-Platform Artifact Packaging (`scripts/package-artifacts.mjs`)
-
-The packaging script automatically discovers and standardizes build outputs across platforms:
 
 | Platform | Format | Canonical Artifact Name Pattern |
 | :--- | :--- | :--- |
@@ -169,43 +142,3 @@ The packaging script automatically discovers and standardizes build outputs acro
 | **Linux** *(Future)* | DEB / AppImage | `securo-{version}-linux-{arch}.deb` / `.AppImage` |
 
 All outputs are staged in `artifacts/` alongside a consolidated `SHA256SUMS.txt` cryptographic manifest.
-
----
-
-## 8. Release Pipeline Architecture (`.github/workflows/release.yml`)
-
-To avoid redundant network clones and frontend compilations across runners, the release workflow builds and stages the web bundle **once** on Linux (`prepare-frontend`) and distributes the immutable `staged-frontend` artifact to all native platform runners:
-
-```mermaid
-flowchart TD
-    Trigger["Release Trigger\n(Tag v* or workflow_dispatch)"]
-
-    subgraph Stage0["Stage 0: Shared Frontend Build (Once)"]
-        PrepJob["prepare-frontend\n(ubuntu-latest)\n- Sparse clone securo\n- Vite build + stage-frontend\n- Upload staged-frontend (src/)"]
-    end
-
-    subgraph BuildJobs["Stage 1: Parallel Native Platform Compilation"]
-        WindowsJob["windows Job\n(windows-latest)\n- Download staged-frontend\n- rust-cache (windows-x64)\n- tauri build (NSIS .exe & MSI)"]
-        AndroidJob["android Matrix\n(ubuntu-22.04 × aarch64 / armv7 / x86_64)\n- Download staged-frontend\n- rust-cache per arch & Gradle cache\n- tauri android build & apksigner"]
-        MacOSJob["macos Job (Future)\n(macos-latest)\n- Download staged-frontend\n- Universal DMG"]
-        LinuxJob["linux Job (Future)\n(ubuntu-22.04)\n- Download staged-frontend\n- DEB & AppImage"]
-    end
-
-    subgraph PublishJob["Stage 2: Consolidation & Distribution"]
-        DownloadAll["Download Platform Artifacts\n(pattern: securo-*)"]
-        ConsolidateSums["Consolidate SHA256SUMS.txt"]
-        GhRelease["softprops/action-gh-release@v2\n(Single Unified GitHub Release)"]
-    end
-
-    Trigger --> PrepJob
-    PrepJob --> WindowsJob
-    PrepJob --> AndroidJob
-    PrepJob -.-> MacOSJob
-    PrepJob -.-> LinuxJob
-
-    WindowsJob --> DownloadAll
-    AndroidJob --> DownloadAll
-
-    DownloadAll --> ConsolidateSums
-    ConsolidateSums --> GhRelease
-```

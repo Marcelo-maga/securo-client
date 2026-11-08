@@ -104,18 +104,6 @@
       <div id="server-url" class="server-badge">...</div>
       <a href="config/config.html" class="btn" id="config-btn">Configurar Servidor</a>
     </div>
-    <script>
-      const invoke = window.__TAURI__?.core?.invoke;
-      if (invoke) {
-        invoke("get_connection_settings").then((settings) => {
-          const serverUrl = settings?.server_url || settings?.serverUrl;
-          if (serverUrl) {
-            document.querySelector("#server-url").textContent = serverUrl;
-          } else {
-            window.location.replace("config/config.html");
-          }
-        }).catch(() => {});
-      }
-    </script>
+    <script src="app-fallback.js"></script>
   </body>
 </html>

@@ -69,6 +69,7 @@ describe('Internationalization (i18n) Consistency', () => {
       'SERVER_UNREACHABLE',
       'SERVER_HTTP_ERROR',
       'CONFIG_SAVE_FAILED',
+      'PROXY_FORBIDDEN',
       'UNKNOWN',
     ];
 
@@ -112,7 +113,6 @@ describe('Internationalization (i18n) Consistency', () => {
     const en = JSON.parse(fs.readFileSync(configEnPath, 'utf8'));
     const pt = JSON.parse(fs.readFileSync(configPtPath, 'utf8'));
 
-    // Check that SERVER_UNREACHABLE in embedded fallback has the complete helpful message
     assert.ok(
       jsContent.includes(en.errors.SERVER_UNREACHABLE),
       'setup.js embedded fallback must contain the full en-US SERVER_UNREACHABLE message'
