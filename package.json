@@ -1,13 +1,13 @@
 {
-  "name": "securo-mobile",
+  "name": "securo-client",
   "version": "0.1.0",
   "description": "Native mobile and desktop client for self-hosted Securo personal finance",
   "private": true,
   "type": "module",
-  "homepage": "https://github.com/Marcelo-maga/securo-mobile",
+  "homepage": "https://github.com/Marcelo-maga/securo-client",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Marcelo-maga/securo-mobile.git"
+    "url": "git+https://github.com/Marcelo-maga/securo-client.git"
   },
   "license": "AGPL-3.0-only",
   "keywords": [

@@ -93,7 +93,7 @@ if (fs.existsSync(resDir)) {
 }
 
 // 4. Update MainActivity.kt from bridge template
-const mainActivityPath = path.resolve('src-tauri/gen/android/app/src/main/java/com/securo/mobile/MainActivity.kt');
+const mainActivityPath = path.resolve('src-tauri/gen/android/app/src/main/java/com/securo/client/MainActivity.kt');
 const bridgeMainActivity = path.resolve('src-tauri/bridge/MainActivity.kt');
 
 if (fs.existsSync(bridgeMainActivity) && fs.existsSync(path.dirname(mainActivityPath))) {

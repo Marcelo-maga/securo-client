@@ -1,9 +1,9 @@
-# Securo Mobile
+# Securo Client
 
 <div align="center">
 
-[![CI Pipeline](https://github.com/Marcelo-maga/securo-mobile/actions/workflows/ci.yml/badge.svg)](https://github.com/Marcelo-maga/securo-mobile/actions/workflows/ci.yml)
-[![Release Pipeline](https://github.com/Marcelo-maga/securo-mobile/actions/workflows/release.yml/badge.svg)](https://github.com/Marcelo-maga/securo-mobile/actions/workflows/release.yml)
+[![CI Pipeline](https://github.com/Marcelo-maga/securo-client/actions/workflows/ci.yml/badge.svg)](https://github.com/Marcelo-maga/securo-client/actions/workflows/ci.yml)
+[![Release Pipeline](https://github.com/Marcelo-maga/securo-client/actions/workflows/release.yml/badge.svg)](https://github.com/Marcelo-maga/securo-client/actions/workflows/release.yml)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2.0-blue.svg?logo=tauri&logoColor=white)](https://tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Desktop-green.svg?logo=android&logoColor=white)](https://android.com)
@@ -13,8 +13,8 @@
 
 *Unofficial client built with Tauri v2 and Rust.*
 
-[Download APK](#installation) •
-[Features](#why-securo-mobile) •
+[Download](#installation) •
+[Features](#why-securo-client) •
 [Architecture](#architecture) •
 [Development](#development) •
 [Troubleshooting](#troubleshooting) •
@@ -24,11 +24,11 @@
 
 ---
 
-## Why Securo Mobile?
+## Why Securo Client?
 
 Running self-hosted web apps on mobile browsers or PWAs often creates friction: CORS blocks local IP addresses/VPNs, browsers reject self-signed homelab TLS certificates, and browser URL bars waste screen space.
 
-**Securo Mobile eliminates these issues:**
+**Securo Client eliminates these issues:**
 
 - ⚡ **Native HTTP Bridge:** Proxies all `fetch` and `XMLHttpRequest` calls through native Rust sockets (`reqwest` + `rustls`), completely bypassing WebView CORS and mixed-content restrictions.
 - 🛡️ **Homelab & Self-Signed TLS Support:** Connect securely to private LAN IPs (`192.168.x.x`), Tailscale/WireGuard domains, or servers with self-signed SSL certificates.
@@ -39,25 +39,26 @@ Running self-hosted web apps on mobile browsers or PWAs often creates friction: 
 
 ## Installation
 
-### Pre-built APKs (Android)
+### Pre-built Releases (Desktop & Android)
 
-1. Head to the **[Latest Release](https://github.com/Marcelo-maga/securo-mobile/releases/latest)**.
-2. Download the APK for your device architecture:
-   - **`arm64-v8a`** (Recommended — modern phones and tablets)
-   - **`armeabi-v7a`** (Older 32-bit Android devices)
-   - **`x86_64`** (Android emulators and Chromebooks)
-3. Install the APK on your device.
+1. Head to the **[Latest Release](https://github.com/Marcelo-maga/securo-client/releases/latest)**.
+2. Download the installer for your platform:
+   - **Windows Desktop:** `.exe` (NSIS Setup) or `.msi` installer (`x64`)
+   - **Android (`arm64-v8a`):** Recommended — modern phones and tablets
+   - **Android (`armeabi-v7a`):** Older 32-bit Android devices
+   - **Android (`x86_64`):** Android emulators and Chromebooks
+3. Install the application on your device.
 4. Launch the app, enter your Securo server URL (e.g. `https://securo.homelab.local` or `http://192.168.1.100:8080`), and connect!
 
 ---
 
 ## Architecture
 
-Securo Mobile embeds an optimized build of the official Securo web frontend inside a lightweight native shell:
+Securo Client embeds an optimized build of the official Securo web frontend inside a lightweight native shell:
 
 ```mermaid
 flowchart TD
-    subgraph MobileApp["📱 Securo Native Client (Tauri v2)"]
+    subgraph ClientApp["💻📱 Securo Client (Tauri v2)"]
         subgraph WebView["Local WebView Sandbox"]
             UI["Securo React Frontend\n(HashRouter + Mobile Overrides)"]
             Bridge["securo-http-bridge.js\n(Patched window.fetch & XHR)"]
@@ -98,8 +99,8 @@ flowchart TD
 
 ```bash
 # 1. Clone & install dependencies
-git clone https://github.com/Marcelo-maga/securo-mobile.git
-cd securo-mobile
+git clone https://github.com/Marcelo-maga/securo-client.git
+cd securo-client
 npm install
 
 # 2. Fetch, adapt and stage the Securo frontend
@@ -135,6 +136,6 @@ Contributions are welcome! Please check out [CONTRIBUTING.md](CONTRIBUTING.md) f
 
 ## License & Attribution
 
-- **Securo Mobile** is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+- **Securo Client** is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
 - This project incorporates and adapts frontend components from [Securo](https://github.com/securo-finance/securo), created by Tássio Noronha and licensed under AGPL-3.0.
 - This is an independent, community-driven client and is not officially affiliated with or endorsed by the Securo upstream project.

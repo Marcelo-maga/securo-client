@@ -1,6 +1,6 @@
-# Contributing to Securo Native Client
+# Contributing to Securo Client
 
-Thank you for your interest in contributing to **Securo Native Client**! Open source thrives when people like you collaborate to improve performance, fix bugs, and add new features.
+Thank you for your interest in contributing to **Securo Client**! Open source thrives when people like you collaborate to improve performance, fix bugs, and add new features.
 
 This guide provides instructions for setting up your development environment, submitting bug reports, and submitting pull requests.
 
@@ -15,7 +15,7 @@ We are committed to providing a welcoming, inclusive, and harassment-free enviro
 ## How Can I Contribute?
 
 - 🐛 **Report Bugs:** Open an issue describing the bug, including steps to reproduce, device specifications, and log output.
-- 💡 **Suggest Features:** Share ideas for mobile optimizations, UI polish, or homelab enhancements.
+- 💡 **Suggest Features:** Share ideas for mobile/desktop optimizations, UI polish, or homelab enhancements.
 - 🌐 **Translations:** Improve or add language files in `src/config/locales/`.
 - 💻 **Code Contributions:** Implement bug fixes, enhance bridge capabilities, or streamline the CI/CD pipeline.
 
@@ -39,8 +39,8 @@ Make sure you have the following installed on your machine:
 ### 2. Fork and Clone
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/securo-mobile.git
-cd securo-mobile
+git clone https://github.com/YOUR_USERNAME/securo-client.git
+cd securo-client
 npm install
 ```
 
@@ -120,7 +120,7 @@ We adhere to the [Conventional Commits](https://www.conventionalcommits.org/) st
 - `chore`: Maintenance tasks, dependency updates, or internal scripts.
 
 *Examples:*
-- `fix(mobile): patch undefined array find calls in financial baseline`
+- `fix(client): patch undefined array find calls in financial baseline`
 - `ci: optimize rust build caching and modernize release pipeline`
 - `feat(bridge): add support for multipart form data streaming`
 

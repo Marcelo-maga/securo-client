@@ -32,7 +32,7 @@ describe('Package Artifacts Pipeline & Checksum Calculation', () => {
 
     test('defaults to arm64-v8a when no known ABI is present in filename', () => {
       assert.equal(resolveAbi('app-release.apk', ''), 'arm64-v8a');
-      assert.equal(resolveAbi('securo-mobile.apk', ''), 'arm64-v8a');
+      assert.equal(resolveAbi('securo-client.apk', ''), 'arm64-v8a');
     });
   });
 

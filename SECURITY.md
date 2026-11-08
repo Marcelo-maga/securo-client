@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-We provide security updates and patches for the following versions of Securo Mobile:
+We provide security updates and patches for the following versions of Securo Client:
 
 | Version | Supported          |
 | ------- | ------------------ |
@@ -13,16 +13,16 @@ We provide security updates and patches for the following versions of Securo Mob
 
 ## Reporting a Vulnerability
 
-The Securo Mobile maintainers take security seriously. If you discover a security vulnerability in this project, please report it responsibly:
+The Securo Client maintainers take security seriously. If you discover a security vulnerability in this project, please report it responsibly:
 
 ### How to Report
 
 1. **GitHub Private Vulnerability Report (Recommended):**
-   - Navigate to the [Security Advisories](https://github.com/Marcelo-maga/securo-mobile/security/advisories) tab of this repository.
+   - Navigate to the [Security Advisories](https://github.com/Marcelo-maga/securo-client/security/advisories) tab of this repository.
    - Click **"Report a vulnerability"** to submit a private report.
    
 2. **Via GitHub Issues:**
-   - If private vulnerability reporting is unavailable, you can open an issue on [GitHub Issues](https://github.com/Marcelo-maga/securo-mobile/issues).
+   - If private vulnerability reporting is unavailable, you can open an issue on [GitHub Issues](https://github.com/Marcelo-maga/securo-client/issues).
    - Please label it appropriately and avoid posting sensitive reproduction material (e.g. real credentials, private server IPs, or authorization tokens) publicly in the issue description.
 
 ### What to Include in Your Report

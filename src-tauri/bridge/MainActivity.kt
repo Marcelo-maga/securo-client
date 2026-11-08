@@ -1,4 +1,4 @@
-package com.securo.mobile
+package com.securo.client
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

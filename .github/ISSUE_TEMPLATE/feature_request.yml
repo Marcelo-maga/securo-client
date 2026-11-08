@@ -1,12 +1,12 @@
 name: Feature Request
-description: Suggest an idea or enhancement for Securo Mobile
+description: Suggest an idea or enhancement for Securo Client
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for suggesting a feature to make Securo Mobile better!
+        Thank you for suggesting a feature to make Securo Client better!
 
   - type: textarea
     id: problem

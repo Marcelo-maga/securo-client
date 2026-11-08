@@ -1,12 +1,12 @@
-# Securo Native Client Architecture
+# Securo Client Architecture
 
-This document provides a comprehensive technical overview of the architecture, design decisions, and data flows within the **Securo Native Client** (`securo-mobile`).
+This document provides a comprehensive technical overview of the architecture, design decisions, and data flows within **Securo Client** (`securo-client`).
 
 ---
 
 ## 1. Design Goals & Philosophy
 
-Securo is a modern, self-hosted personal finance platform. The primary goal of `securo-mobile` is to deliver an authentic, responsive native client on top of Tauri v2 across both desktop (Windows, macOS, Linux) and mobile (Android, iOS) without requiring a completely separate frontend codebase.
+Securo is a modern, self-hosted personal finance platform. The primary goal of `securo-client` is to deliver an authentic, responsive native client on top of Tauri v2 across both desktop (Windows, macOS, Linux) and mobile (Android, iOS) without requiring a completely separate frontend codebase.
 
 ### Core Objectives:
 1. **Zero Intermediate Infrastructure:** Direct, encrypted communication between the client device and the user's self-hosted server.
@@ -96,7 +96,7 @@ sequenceDiagram
 
 ## 4. Frontend Ingestion & Adaptation Pipeline
 
-The frontend pipeline enables `securo-mobile` to stay continuously up-to-date with upstream changes from `securo-finance/securo`.
+The frontend pipeline enables `securo-client` to stay continuously up-to-date with upstream changes from `securo-finance/securo`.
 
 ```mermaid
 flowchart LR

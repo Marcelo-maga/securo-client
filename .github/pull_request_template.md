@@ -12,7 +12,7 @@
 <!-- Link related issues, e.g. Fixes #123 -->
 
 ## Checklist
-- [ ] I have read the [CONTRIBUTING.md](https://github.com/Marcelo-maga/securo-mobile/blob/main/CONTRIBUTING.md) guide.
+- [ ] I have read the [CONTRIBUTING.md](https://github.com/Marcelo-maga/securo-client/blob/main/CONTRIBUTING.md) guide.
 - [ ] My code follows the code style and conventions of this project.
 - [ ] I have run local test suites (`npm test` and `npm run test:rust`) and all tests pass.
 - [ ] Relevant documentation has been updated.
