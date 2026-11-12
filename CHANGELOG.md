@@ -2,6 +2,13 @@
 
 All notable changes to the Securo Client project are documented in this file.
 
+## [0.2.4](https://github.com/Marcelo-maga/securo-client/compare/v0.2.3...v0.2.4) (2026-11-12)
+
+
+### Bug Fixes
+
+* **ci:** disable automatic prerelease flag for v0 releases ([f070880](https://github.com/Marcelo-maga/securo-client/commit/f0708807f9c6311cb17c6b444e944f654bdd66b4))
+
 ## [0.2.3](https://github.com/Marcelo-maga/securo-client/compare/v0.2.2...v0.2.3) (2026-11-12)
 
 
