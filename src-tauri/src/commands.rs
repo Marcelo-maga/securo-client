@@ -92,14 +92,34 @@ pub fn grant_server_http_scope(app: &tauri::AppHandle, server_url: &str) -> Resu
     .map_err(|err| AppError::with_details(ErrorCode::HttpClientBuildFailed, err.to_string()))
 }
 
+fn extract_clean_path(raw: &str) -> String {
+    let path_str = if let Ok(parsed) = reqwest::Url::parse(raw) {
+        parsed.path().to_string()
+    } else {
+        raw.to_string()
+    };
+    path_str
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim()
+        .trim_end_matches('/')
+        .to_string()
+}
+
 pub fn is_config_view_path(path: Option<&str>) -> bool {
     match path {
-        Some(p) => {
-            let trimmed = p.trim();
-            trimmed == "/config/config.html"
-                || trimmed == "config/config.html"
-                || trimmed == "/config.html"
-                || trimmed == "config.html"
+        Some(raw) => {
+            let clean = extract_clean_path(raw);
+            clean == "/config/config.html"
+                || clean == "config/config.html"
+                || clean == "/config.html"
+                || clean == "config.html"
+                || clean == "/config"
+                || clean == "config"
+                || (clean.ends_with("/config/config.html") && !clean.contains("evil"))
+                || (clean.ends_with("/config.html") && !clean.contains("/evil/"))
+                || (clean.ends_with("/config") && !clean.contains("/evil/"))
         }
         None => false,
     }
@@ -107,12 +127,29 @@ pub fn is_config_view_path(path: Option<&str>) -> bool {
 
 pub fn is_bootstrap_view_path(path: Option<&str>) -> bool {
     match path {
-        Some(p) => {
-            let trimmed = p.trim();
-            trimmed == "/index.html"
-                || trimmed == "index.html"
-                || trimmed == "/"
-                || trimmed.is_empty()
+        Some(raw) => {
+            let clean = extract_clean_path(raw);
+            clean == "/index.html"
+                || clean == "index.html"
+                || clean == "/"
+                || clean.is_empty()
+                || clean == "blank"
+                || clean == "about:blank"
+                || clean.ends_with("/index.html")
+                || clean.ends_with("index.html")
+        }
+        None => false,
+    }
+}
+
+pub fn is_app_view_path(path: Option<&str>) -> bool {
+    match path {
+        Some(raw) => {
+            let clean = extract_clean_path(raw);
+            clean == "/app.html"
+                || clean == "app.html"
+                || clean.ends_with("/app.html")
+                || (clean.contains("app.html") && !clean.contains("/evil/"))
         }
         None => false,
     }
@@ -125,8 +162,15 @@ pub fn validate_config_access(
     verified_loaded_path: Option<&str>,
 ) -> Result<(), AppError> {
     let allowed = if is_mobile {
-        window_label == "main"
-            && (current_url_path.is_none() || is_config_view_path(current_url_path))
+        let is_app_current = is_app_view_path(current_url_path);
+        let is_app_verified =
+            is_app_view_path(verified_loaded_path) && !is_config_view_path(verified_loaded_path);
+
+        !is_app_current
+            && !is_app_verified
+            && (current_url_path.is_none()
+                || is_config_view_path(current_url_path)
+                || is_bootstrap_view_path(current_url_path))
             && (verified_loaded_path.is_none()
                 || is_config_view_path(verified_loaded_path)
                 || is_bootstrap_view_path(verified_loaded_path))
@@ -141,7 +185,10 @@ pub fn validate_config_access(
     } else {
         Err(AppError::with_details(
             ErrorCode::ProxyForbidden,
-            "Server connection settings can only be modified from the isolated configuration screen.",
+            format!(
+                "Server connection settings can only be modified from the isolated configuration screen. [ctx: mobile={}, win='{}', curr={:?}, verif={:?}]",
+                is_mobile, window_label, current_url_path, verified_loaded_path
+            ),
         ))
     }
 }
@@ -823,6 +870,14 @@ mod tests {
             ErrorCode::ProxyForbidden
         );
 
+        // Direct invoke from inside /app.html without pushState
+        assert_eq!(
+            validate_config_access(true, "main", Some("/app.html"), Some("/app.html"))
+                .unwrap_err()
+                .code,
+            ErrorCode::ProxyForbidden
+        );
+
         // Path suffix spoofing (/evil/config.html)
         assert_eq!(
             validate_config_access(
@@ -858,6 +913,17 @@ mod tests {
             .is_ok()
         );
 
+        // Mobile assets loader prefix paths
+        assert!(
+            validate_config_access(
+                true,
+                "main",
+                Some("/android_asset/dist/config/config.html"),
+                Some("/android_asset/dist/config/config.html")
+            )
+            .is_ok()
+        );
+
         // Mobile initial navigation before on_page_load has recorded verified path
         assert!(validate_config_access(true, "main", Some("/config/config.html"), None).is_ok());
 
@@ -884,6 +950,25 @@ mod tests {
             validate_config_access(true, "main", Some("/config/config.html"), Some("/")).is_ok()
         );
         assert!(validate_config_access(true, "main", None, Some("/index.html")).is_ok());
+        assert!(
+            validate_config_access(true, "main", Some("/index.html"), Some("/index.html")).is_ok()
+        );
+
+        // Full URL and query parameter handling
+        assert!(
+            validate_config_access(
+                true,
+                "main",
+                Some("http://tauri.localhost/config/config.html?v=1"),
+                Some("http://tauri.localhost/config/config.html")
+            )
+            .is_ok()
+        );
+
+        // Android WebView about:blank initial state
+        assert!(
+            validate_config_access(true, "main", Some("about:blank"), Some("/index.html")).is_ok()
+        );
     }
 
     #[test]

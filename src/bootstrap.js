@@ -1,12 +1,7 @@
 (function () {
   const rawInvoke = window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke;
   const invoke = rawInvoke ? (cmd, args = {}) => rawInvoke(cmd, args) : null;
-  const openConfig = () => {
-    if (invoke) {
-      invoke("open_config_window").catch(() => {});
-    }
-    window.location.replace("config/config.html");
-  };
+  const openConfig = () => window.location.replace("config/config.html");
 
   if (!invoke) {
     openConfig();
