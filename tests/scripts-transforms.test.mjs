@@ -203,7 +203,7 @@ const doc = "data.accounts.find(x)";
       assert.ok(outputXml.includes('<string name="main_activity_title">Securo</string>'));
     });
 
-    test('injects ACCESS_NETWORK_STATE, roundIcon, and enforces android:allowBackup="false"', () => {
+    test('injects ACCESS_NETWORK_STATE, roundIcon, usesCleartextTraffic, and enforces android:allowBackup="false"', () => {
       const inputXml = `
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
@@ -219,14 +219,16 @@ const doc = "data.accounts.find(x)";
       assert.ok(outputXml.includes('android:roundIcon="@mipmap/ic_launcher_round"'));
       assert.ok(outputXml.includes('android:allowBackup="false"'));
       assert.ok(!outputXml.includes('android:allowBackup="true"'));
+      assert.ok(outputXml.includes('android:usesCleartextTraffic="true"'));
     });
 
-    test('is idempotent when permissions, roundIcon, and allowBackup="false" are already configured', () => {
+    test('is idempotent when permissions, roundIcon, usesCleartextTraffic, and allowBackup="false" are already configured', () => {
       const alreadyConfigured = `
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <application
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round">
@@ -235,8 +237,10 @@ const doc = "data.accounts.find(x)";
       const reprocessed = configureAndroidManifest(alreadyConfigured);
       const occurrences = (reprocessed.match(/ACCESS_NETWORK_STATE/g) || []).length;
       const backupAttrs = (reprocessed.match(/android:allowBackup="false"/g) || []).length;
+      const cleartextAttrs = (reprocessed.match(/android:usesCleartextTraffic="true"/g) || []).length;
       assert.equal(occurrences, 1);
       assert.equal(backupAttrs, 1);
+      assert.equal(cleartextAttrs, 1);
     });
   });
 });

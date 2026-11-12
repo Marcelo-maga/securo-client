@@ -59,14 +59,25 @@ pub struct HttpScopeEntry {
 
 pub fn build_api_scope_entries(normalized_server_url: &str) -> Vec<HttpScopeEntry> {
     let base = normalized_server_url.trim_end_matches('/');
-    vec![
+    let mut entries = vec![
         HttpScopeEntry {
             url: format!("{base}/api"),
         },
         HttpScopeEntry {
             url: format!("{base}/api/*"),
         },
-    ]
+    ];
+
+    if let Some(rest) = base.strip_prefix("http://") {
+        entries.push(HttpScopeEntry {
+            url: format!("https://{rest}/api"),
+        });
+        entries.push(HttpScopeEntry {
+            url: format!("https://{rest}/api/*"),
+        });
+    }
+
+    entries
 }
 
 pub fn grant_server_http_scope(app: &tauri::AppHandle, server_url: &str) -> Result<(), AppError> {
@@ -87,6 +98,7 @@ pub fn grant_server_http_scope(app: &tauri::AppHandle, server_url: &str) -> Resu
     app.add_capability(
         CapabilityBuilder::new(cap_id)
             .window("main")
+            .webview("main")
             .permission_scoped("http:default", allowed, denied),
     )
     .map_err(|err| AppError::with_details(ErrorCode::HttpClientBuildFailed, err.to_string()))
@@ -981,6 +993,23 @@ mod tests {
                 },
                 HttpScopeEntry {
                     url: "https://securo.homelab.lan:8443/api/*".to_string()
+                },
+            ]
+        );
+        assert_eq!(
+            build_api_scope_entries("http://securo.homelab.lan:8080/"),
+            vec![
+                HttpScopeEntry {
+                    url: "http://securo.homelab.lan:8080/api".to_string()
+                },
+                HttpScopeEntry {
+                    url: "http://securo.homelab.lan:8080/api/*".to_string()
+                },
+                HttpScopeEntry {
+                    url: "https://securo.homelab.lan:8080/api".to_string()
+                },
+                HttpScopeEntry {
+                    url: "https://securo.homelab.lan:8080/api/*".to_string()
                 },
             ]
         );

@@ -42,6 +42,16 @@ export function configureAndroidManifest(xmlContent) {
     );
   }
 
+  // Enable cleartext traffic so self-hosted HTTP instances (LAN / IP) work without OS cleartext blocks
+  if (manifest.includes('android:usesCleartextTraffic=')) {
+    manifest = manifest.replace(/android:usesCleartextTraffic="[^"]*"/, 'android:usesCleartextTraffic="true"');
+  } else {
+    manifest = manifest.replace(
+      /<application\b/,
+      '<application\n        android:usesCleartextTraffic="true"'
+    );
+  }
+
   return manifest;
 }
 

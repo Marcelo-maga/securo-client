@@ -196,6 +196,11 @@ if (typeof window !== "undefined") {
       return settingsPromise;
     }
 
+    // Proactively pre-cache connection settings so initial frontend requests don't block
+    try {
+      getSettings().catch(() => {});
+    } catch {}
+
     const browserFetch = window.fetch.bind(window);
     window.fetch = (input, init) => {
       // 1. Synchronously bypass internal Tauri IPC requests to avoid deadlock & recursion
@@ -216,11 +221,16 @@ if (typeof window !== "undefined") {
         if (!isApiRequest(input, baseHref, serverUrl)) return browserFetch(input, init);
         const targetUrl = serverUrl && getApiUrl(input, serverUrl, baseHref);
         if (!targetUrl) return browserFetch(input, init);
-        return nativeFetch(targetUrl, {
-          maxRedirections: 5,
-          ...init,
-          ...getDangerOptions(settings),
-        });
+        try {
+          return await nativeFetch(targetUrl, {
+            maxRedirections: 5,
+            ...init,
+            ...getDangerOptions(settings),
+          });
+        } catch (error) {
+          console.error("[SecuroBridge] Native fetch error:", targetUrl, error);
+          throw error;
+        }
       })();
     };
 
@@ -407,6 +417,7 @@ if (typeof window !== "undefined") {
       }
 
       _fail(error) {
+        console.error("[SecuroBridge] XHR error:", this._url, error);
         this._state = 4;
         this._emit("readystatechange");
         this._emit(error?.name === "AbortError" ? "abort" : "error");
