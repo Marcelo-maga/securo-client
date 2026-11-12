@@ -38,6 +38,11 @@ on:
         required: false
         default: ""
         type: string
+      prerelease:
+        description: "Mark as pre-release"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -432,4 +437,4 @@ jobs:
           files: release-artifacts/*
           fail_on_unmatched_files: true
           generate_release_notes: true
-          prerelease: ${{ startsWith(github.ref_name, 'v0.') || github.event_name == 'workflow_dispatch' }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease == true }}
