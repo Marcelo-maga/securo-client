@@ -1,6 +1,6 @@
 {
   "name": "securo-client",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Native mobile and desktop client for self-hosted Securo personal finance",
   "private": false,
   "type": "module",

@@ -2,6 +2,13 @@
 
 All notable changes to the Securo Client project are documented in this file.
 
+## [0.2.2](https://github.com/Marcelo-maga/securo-client/compare/v0.2.1...v0.2.2) (2026-11-12)
+
+
+### Bug Fixes
+
+* **security:** broaden android configuration path verification and add debug context ([4293ac5](https://github.com/Marcelo-maga/securo-client/commit/4293ac50036b6a19cac8522af82ca29ccf835a1b))
+
 ## [0.2.1](https://github.com/Marcelo-maga/securo-client/compare/v0.2.0...v0.2.1) (2026-11-12)
 
 
