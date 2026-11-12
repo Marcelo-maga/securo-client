@@ -14,7 +14,7 @@ const STORE_FILE: &str = "config.json";
 const SERVER_URL_KEY: &str = "server_url";
 const ALLOW_INVALID_CERTS_KEY: &str = "allow_invalid_certs";
 const AUTO_CONNECT_KEY: &str = "auto_connect";
-const CONFIG_VIEW_PATH: &str = "/config/config.html";
+pub const CONFIG_VIEW_PATH: &str = "/config/config.html";
 
 /// Tracks verified top-level page loads and already-granted runtime HTTP scopes.
 #[derive(Default)]
@@ -105,6 +105,19 @@ pub fn is_config_view_path(path: Option<&str>) -> bool {
     }
 }
 
+pub fn is_bootstrap_view_path(path: Option<&str>) -> bool {
+    match path {
+        Some(p) => {
+            let trimmed = p.trim();
+            trimmed == "/index.html"
+                || trimmed == "index.html"
+                || trimmed == "/"
+                || trimmed.is_empty()
+        }
+        None => false,
+    }
+}
+
 pub fn validate_config_access(
     is_mobile: bool,
     window_label: &str,
@@ -113,8 +126,10 @@ pub fn validate_config_access(
 ) -> Result<(), AppError> {
     let allowed = if is_mobile {
         window_label == "main"
-            && is_config_view_path(current_url_path)
-            && (verified_loaded_path.is_none() || is_config_view_path(verified_loaded_path))
+            && (current_url_path.is_none() || is_config_view_path(current_url_path))
+            && (verified_loaded_path.is_none()
+                || is_config_view_path(verified_loaded_path)
+                || is_bootstrap_view_path(verified_loaded_path))
     } else {
         window_label == "config"
             && is_config_view_path(current_url_path)
@@ -547,8 +562,21 @@ pub fn activate_app_window(
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let _ = app;
-        Err("mobile uses single webview navigation".to_string())
+        if let Some(state) = app.try_state::<SecurityState>() {
+            state.record_page_load("main", "/app.html");
+        }
+        if let Some(main_window) = app.get_webview_window("main") {
+            if let Ok(mut target_url) = main_window.url()
+                && !target_url.path().ends_with("/app.html")
+            {
+                target_url.set_path("/app.html");
+                target_url.set_query(None);
+                target_url.set_fragment(Some("/"));
+                let _ = main_window.navigate(target_url);
+            }
+            return Ok(());
+        }
+        Err("Main window is not available".to_string())
     }
 }
 
@@ -582,8 +610,19 @@ pub fn open_config_window(app: tauri::AppHandle) -> Result<(), String> {
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let _ = app;
-        Err("mobile uses single webview navigation".to_string())
+        if let Some(state) = app.try_state::<SecurityState>() {
+            state.record_page_load("main", CONFIG_VIEW_PATH);
+        }
+        if let Some(main_window) = app.get_webview_window("main") {
+            if let Ok(mut target_url) = main_window.url() {
+                target_url.set_path(CONFIG_VIEW_PATH);
+                target_url.set_query(None);
+                target_url.set_fragment(None);
+                let _ = main_window.navigate(target_url);
+            }
+            return Ok(());
+        }
+        Err("Main window is not available".to_string())
     }
 }
 
@@ -821,6 +860,30 @@ mod tests {
 
         // Mobile initial navigation before on_page_load has recorded verified path
         assert!(validate_config_access(true, "main", Some("/config/config.html"), None).is_ok());
+
+        // Mobile legitimate navigation transitioned from bootstrap entry (/index.html, index.html, /)
+        assert!(
+            validate_config_access(
+                true,
+                "main",
+                Some("/config/config.html"),
+                Some("/index.html")
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_config_access(
+                true,
+                "main",
+                Some("/config/config.html"),
+                Some("index.html")
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_config_access(true, "main", Some("/config/config.html"), Some("/")).is_ok()
+        );
+        assert!(validate_config_access(true, "main", None, Some("/index.html")).is_ok());
     }
 
     #[test]

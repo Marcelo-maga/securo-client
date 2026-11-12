@@ -42,6 +42,24 @@ pub fn run() {
                     window.show()?;
                 }
             }
+
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            {
+                let auto_connect = store
+                    .as_ref()
+                    .and_then(|s| s.get("auto_connect"))
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false);
+                if let Some(state) = app.try_state::<commands::SecurityState>() {
+                    let initial_path = if saved_server_url.is_some() && auto_connect {
+                        "/app.html"
+                    } else {
+                        commands::CONFIG_VIEW_PATH
+                    };
+                    state.record_page_load("main", initial_path);
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
