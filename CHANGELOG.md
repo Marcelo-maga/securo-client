@@ -2,6 +2,13 @@
 
 All notable changes to the Securo Client project are documented in this file.
 
+## [0.2.3](https://github.com/Marcelo-maga/securo-client/compare/v0.2.2...v0.2.3) (2026-11-12)
+
+
+### Bug Fixes
+
+* **android:** enable webpki roots, cleartext traffic and webview http scopes ([3686f15](https://github.com/Marcelo-maga/securo-client/commit/3686f15e0cba97fd53324fcf46e5afc99ad8ed23))
+
 ## [0.2.2](https://github.com/Marcelo-maga/securo-client/compare/v0.2.1...v0.2.2) (2026-11-12)
 
 
