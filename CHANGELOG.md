@@ -2,6 +2,13 @@
 
 All notable changes to the Securo Client project are documented in this file.
 
+## [0.2.5](https://github.com/Marcelo-maga/securo-client/compare/v0.2.4...v0.2.5) (2026-11-15)
+
+
+### Bug Fixes
+
+* **android:** enable unsafe-headers and align origin and referer with server url ([1fea1bf](https://github.com/Marcelo-maga/securo-client/commit/1fea1bf2b08deb70e5536b2297051db941a91d3f))
+
 ## [0.2.4](https://github.com/Marcelo-maga/securo-client/compare/v0.2.3...v0.2.4) (2026-11-12)
 
 
