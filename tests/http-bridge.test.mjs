@@ -7,6 +7,7 @@ import {
   getApiUrl,
   getDangerOptions,
   isInternalIpcUrl,
+  applyOriginAndRefererHeaders,
 } from '../src-tauri/bridge/http-bridge.js';
 
 describe('Native HTTP Bridge (securo-http-bridge) & Security Policy', () => {
@@ -159,6 +160,35 @@ describe('Native HTTP Bridge (securo-http-bridge) & Security Policy', () => {
       });
       assert.deepEqual(getDangerOptions({ allow_invalid_certs: false }), {});
       assert.deepEqual(getDangerOptions(null), {});
+    });
+  });
+
+  describe('applyOriginAndRefererHeaders() CORS & Reverse Proxy Alignment', () => {
+    test('sets Origin and Referer matching serverUrl origin', () => {
+      const headers = new Headers({ 'Content-Type': 'application/json' });
+      applyOriginAndRefererHeaders(headers, 'https://securo.domain.com/api');
+      assert.equal(headers.get('Origin'), 'https://securo.domain.com');
+      assert.equal(headers.get('Referer'), 'https://securo.domain.com/');
+      assert.equal(headers.get('Content-Type'), 'application/json');
+    });
+
+    test('handles standard HTTP ports and IP domains', () => {
+      const headers = new Headers();
+      applyOriginAndRefererHeaders(headers, 'http://192.168.1.50:8000');
+      assert.equal(headers.get('Origin'), 'http://192.168.1.50:8000');
+      assert.equal(headers.get('Referer'), 'http://192.168.1.50:8000/');
+    });
+
+    test('does not throw or mutate on empty or invalid inputs', () => {
+      const headers = new Headers({ Authorization: 'Bearer token' });
+      applyOriginAndRefererHeaders(headers, null);
+      assert.equal(headers.get('Authorization'), 'Bearer token');
+      assert.equal(headers.get('Origin'), null);
+
+      applyOriginAndRefererHeaders(headers, 'invalid-url');
+      assert.equal(headers.get('Origin'), null);
+
+      applyOriginAndRefererHeaders(null, 'https://securo.domain.com');
     });
   });
 

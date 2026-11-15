@@ -125,6 +125,17 @@ export function getDangerOptions(settings) {
   };
 }
 
+export function applyOriginAndRefererHeaders(headers, serverUrl) {
+  if (!serverUrl || !headers) return;
+  try {
+    const serverOrigin = new URL(serverUrl).origin;
+    if (serverOrigin && serverOrigin !== "null") {
+      headers.set("Origin", serverOrigin);
+      headers.set("Referer", `${serverOrigin}/`);
+    }
+  } catch {}
+}
+
 function installRuntimeErrorOverlay(win, doc) {
   function reportRuntimeError(label, detail) {
     let b = doc.getElementById("securo-err");
@@ -222,9 +233,22 @@ if (typeof window !== "undefined") {
         const targetUrl = serverUrl && getApiUrl(input, serverUrl, baseHref);
         if (!targetUrl) return browserFetch(input, init);
         try {
+          const fetchHeaders = new Headers(init?.headers || {});
+          applyOriginAndRefererHeaders(fetchHeaders, serverUrl);
+
+          let fetchBody = init?.body;
+          if (typeof URLSearchParams !== "undefined" && fetchBody instanceof URLSearchParams) {
+            fetchBody = fetchBody.toString();
+            if (!fetchHeaders.has("Content-Type")) {
+              fetchHeaders.set("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8");
+            }
+          }
+
           return await nativeFetch(targetUrl, {
             maxRedirections: 5,
             ...init,
+            headers: fetchHeaders,
+            ...(fetchBody !== undefined ? { body: fetchBody } : {}),
             ...getDangerOptions(settings),
           });
         } catch (error) {
@@ -371,6 +395,17 @@ if (typeof window !== "undefined") {
 
         this._controller = new AbortController();
         if (this.timeout > 0) this._timer = setTimeout(() => this._controller.abort(), this.timeout);
+
+        applyOriginAndRefererHeaders(this._headers, serverUrl);
+
+        let sendBody = body;
+        if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
+          sendBody = body.toString();
+          if (!this._headers.has("Content-Type")) {
+            this._headers.set("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8");
+          }
+        }
+
         const requestOptions = {
           method: this._method,
           headers: this._headers,
@@ -378,8 +413,8 @@ if (typeof window !== "undefined") {
           maxRedirections: 5,
           ...getDangerOptions(settings),
         };
-        if (body !== null && body !== undefined && this._method !== "GET" && this._method !== "HEAD") {
-          requestOptions.body = body;
+        if (sendBody !== null && sendBody !== undefined && this._method !== "GET" && this._method !== "HEAD") {
+          requestOptions.body = sendBody;
         }
         try {
           const response = await nativeFetch(targetUrl, requestOptions);
