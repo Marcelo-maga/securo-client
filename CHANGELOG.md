@@ -2,6 +2,13 @@
 
 All notable changes to the Securo Client project are documented in this file.
 
+## [0.2.6](https://github.com/Marcelo-maga/securo-client/compare/v0.2.5...v0.2.6) (2026-11-15)
+
+
+### Bug Fixes
+
+* **android:** route api requests through native rust command and fix xhr onloadend ([a02ec3d](https://github.com/Marcelo-maga/securo-client/commit/a02ec3d7a3c37fc63559a8553a9b124702960bb1))
+
 ## [0.2.5](https://github.com/Marcelo-maga/securo-client/compare/v0.2.4...v0.2.5) (2026-11-15)
 
 
