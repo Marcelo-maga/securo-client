@@ -8,6 +8,8 @@ import {
   getDangerOptions,
   isInternalIpcUrl,
   applyOriginAndRefererHeaders,
+  serializeRequestPayload,
+  installHttpBridge,
 } from '../src-tauri/bridge/http-bridge.js';
 
 describe('Native HTTP Bridge (securo-http-bridge) & Security Policy', () => {
@@ -189,6 +191,107 @@ describe('Native HTTP Bridge (securo-http-bridge) & Security Policy', () => {
       assert.equal(headers.get('Origin'), null);
 
       applyOriginAndRefererHeaders(null, 'https://securo.domain.com');
+    });
+  });
+
+  describe('serializeRequestPayload() & SecuroXMLHttpRequest Proxy Routing', () => {
+    test('serializes URLSearchParams and sets application/x-www-form-urlencoded header', async () => {
+      const headers = new Headers();
+      const params = new URLSearchParams();
+      params.append('username', 'user@example.com');
+      params.append('password', 'securo123');
+
+      const bytes = await serializeRequestPayload(params, headers);
+      assert.equal(headers.get('Content-Type'), 'application/x-www-form-urlencoded;charset=UTF-8');
+      assert.equal(new TextDecoder().decode(new Uint8Array(bytes)), 'username=user%40example.com&password=securo123');
+    });
+
+    test('SecuroXMLHttpRequest exposes onloadend and routes POST /api/auth/login via proxy_api_request', async () => {
+      const recordedCalls = [];
+      class MockBrowserXHR extends EventTarget {
+        open() {}
+        send() {}
+        setRequestHeader() {}
+      }
+
+      const mockWin = {
+        location: { href: 'http://tauri.localhost/app.html#/' },
+        fetch: async () => new Response('browser'),
+        XMLHttpRequest: MockBrowserXHR,
+        __TAURI_INTERNALS__: {
+          invoke: async (cmd, args) => {
+            recordedCalls.push({ cmd, args });
+            if (cmd === 'get_connection_settings') {
+              return { server_url: 'https://securo.domain.com', allow_invalid_certs: false };
+            }
+            if (cmd === 'proxy_api_request') {
+              const bodyBytes = Array.from(
+                new TextEncoder().encode(JSON.stringify({ access_token: 'jwt_abc', token_type: 'bearer' }))
+              );
+              return {
+                status: 200,
+                statusText: 'OK',
+                url: args.url,
+                headers: [['content-type', 'application/json']],
+                body: bodyBytes,
+              };
+            }
+            return null;
+          },
+        },
+      };
+
+      installHttpBridge(mockWin);
+
+      const xhr = new mockWin.XMLHttpRequest();
+      assert.equal('onloadend' in xhr, true, 'Axios requires `onloadend in request` to be true');
+      assert.equal('onload' in xhr, true);
+      assert.equal('onerror' in xhr, true);
+      assert.equal('onreadystatechange' in xhr, true);
+
+      await new Promise((resolve, reject) => {
+        xhr.onloadend = () => resolve();
+        xhr.onerror = (err) => reject(err);
+        xhr.open('POST', '/api/auth/login', true);
+        xhr.send(new URLSearchParams({ username: 'user@example.com', password: 'secret' }));
+      });
+
+      assert.equal(xhr.status, 200);
+      assert.equal(JSON.parse(xhr.responseText).access_token, 'jwt_abc');
+      const proxyCall = recordedCalls.find((c) => c.cmd === 'proxy_api_request');
+      assert.ok(proxyCall, 'must invoke proxy_api_request');
+      assert.equal(proxyCall.args.url, 'https://securo.domain.com/api/auth/login');
+      assert.equal(proxyCall.args.method, 'POST');
+    });
+
+    test('window.fetch handles 204 No Content responses via proxy_api_request without throwing', async () => {
+      class MockBrowserXHR extends EventTarget {}
+      const mockWin = {
+        location: { href: 'http://tauri.localhost/app.html#/' },
+        fetch: async () => new Response('browser'),
+        XMLHttpRequest: MockBrowserXHR,
+        __TAURI_INTERNALS__: {
+          invoke: async (cmd, args) => {
+            if (cmd === 'get_connection_settings') {
+              return { server_url: 'https://securo.domain.com', allow_invalid_certs: false };
+            }
+            if (cmd === 'proxy_api_request') {
+              return {
+                status: 204,
+                statusText: 'No Content',
+                url: args.url,
+                headers: [],
+                body: [],
+              };
+            }
+            return null;
+          },
+        },
+      };
+
+      installHttpBridge(mockWin);
+      const res = await mockWin.fetch('/api/transactions/123', { method: 'DELETE' });
+      assert.equal(res.status, 204);
     });
   });
 

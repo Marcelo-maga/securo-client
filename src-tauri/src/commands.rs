@@ -16,11 +16,14 @@ const ALLOW_INVALID_CERTS_KEY: &str = "allow_invalid_certs";
 const AUTO_CONNECT_KEY: &str = "auto_connect";
 pub const CONFIG_VIEW_PATH: &str = "/config/config.html";
 
-/// Tracks verified top-level page loads and already-granted runtime HTTP scopes.
+type ClientCacheKey = (String, bool);
+
+/// Tracks verified top-level page loads, already-granted runtime HTTP scopes, and shared HTTP clients.
 #[derive(Default)]
 pub struct SecurityState {
     verified_page_paths: Mutex<HashMap<String, String>>,
     granted_scopes: Mutex<HashSet<String>>,
+    http_clients: Mutex<HashMap<ClientCacheKey, Client>>,
 }
 
 impl SecurityState {
@@ -43,6 +46,25 @@ impl SecurityState {
             .map(|mut set| set.insert(normalized_url.to_string()))
             .unwrap_or(true)
     }
+
+    pub fn get_or_build_client(
+        &self,
+        normalized_url: &str,
+        parsed_base: &reqwest::Url,
+        allow_invalid_certs: bool,
+    ) -> Result<Client, AppError> {
+        let key = (normalized_url.to_string(), allow_invalid_certs);
+        if let Ok(map) = self.http_clients.lock()
+            && let Some(client) = map.get(&key)
+        {
+            return Ok(client.clone());
+        }
+        let client = build_http_client(parsed_base, allow_invalid_certs)?;
+        if let Ok(mut map) = self.http_clients.lock() {
+            map.insert(key, client.clone());
+        }
+        Ok(client)
+    }
 }
 
 #[derive(Serialize)]
@@ -50,6 +72,16 @@ pub struct ConnectionSettings {
     pub server_url: Option<String>,
     pub allow_invalid_certs: bool,
     pub auto_connect: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyHttpResponse {
+    pub status: u16,
+    pub status_text: String,
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -344,6 +376,100 @@ pub fn normalize_url(value: &str) -> Result<String, AppError> {
     Ok(parsed.to_string().trim_end_matches('/').to_string())
 }
 
+pub fn resolve_and_validate_api_url(
+    normalized_server_url: &str,
+    request_url: &str,
+) -> Result<reqwest::Url, AppError> {
+    let raw = request_url.trim();
+    if raw.is_empty()
+        || raw.to_ascii_lowercase().contains("%2e")
+        || raw.contains('\\')
+        || raw.contains('\r')
+        || raw.contains('\n')
+    {
+        return Err(AppError::new(ErrorCode::ProxyForbidden));
+    }
+
+    let raw_without_query = raw.split(['?', '#']).next().unwrap_or("");
+    if raw_without_query.split('/').any(|segment| segment == "..") {
+        return Err(AppError::new(ErrorCode::ProxyForbidden));
+    }
+
+    let base = reqwest::Url::parse(normalized_server_url)
+        .map_err(|err| AppError::with_details(ErrorCode::InvalidUrl, err.to_string()))?;
+    let base_path = base.path().trim_end_matches('/').to_string();
+    let expected_api_prefix = format!("{base_path}/api");
+
+    let mut target = if raw.starts_with("http://") || raw.starts_with("https://") {
+        let parsed =
+            reqwest::Url::parse(raw).map_err(|_| AppError::new(ErrorCode::ProxyForbidden))?;
+        if parsed.origin() != base.origin()
+            || !parsed.username().is_empty()
+            || parsed.password().is_some()
+        {
+            return Err(AppError::new(ErrorCode::ProxyForbidden));
+        }
+        let parsed_path = parsed.path().to_string();
+        let mut adjusted = parsed;
+        if !base_path.is_empty()
+            && parsed_path != base_path
+            && !parsed_path.starts_with(&format!("{base_path}/"))
+        {
+            adjusted.set_path(&format!("{base_path}{parsed_path}"));
+        }
+        adjusted
+    } else {
+        let rel = if raw == "api"
+            || raw.starts_with("api/")
+            || raw.starts_with("api?")
+            || raw.starts_with("api#")
+        {
+            format!("/{raw}")
+        } else if raw.starts_with('/') {
+            raw.to_string()
+        } else {
+            return Err(AppError::new(ErrorCode::ProxyForbidden));
+        };
+
+        let mut joined = base.clone();
+        let (path_part, rest) = match rel.find(['?', '#']) {
+            Some(idx) => (&rel[..idx], Some(&rel[idx..])),
+            None => (rel.as_str(), None),
+        };
+
+        let full_path = if !base_path.is_empty()
+            && path_part != base_path
+            && !path_part.starts_with(&format!("{base_path}/"))
+        {
+            format!("{base_path}{path_part}")
+        } else {
+            path_part.to_string()
+        };
+
+        joined.set_path(&full_path);
+        joined.set_query(None);
+        joined.set_fragment(None);
+        if let Some(suffix) = rest
+            && let Some(q_part) = suffix.strip_prefix('?')
+        {
+            let q_clean = q_part.split('#').next().unwrap_or("");
+            joined.set_query(Some(q_clean));
+        }
+        joined
+    };
+
+    target.set_fragment(None);
+
+    let target_path = target.path();
+    if target_path != expected_api_prefix
+        && !target_path.starts_with(&format!("{expected_api_prefix}/"))
+    {
+        return Err(AppError::new(ErrorCode::ProxyForbidden));
+    }
+
+    Ok(target)
+}
+
 fn build_http_client(
     base_url: &reqwest::Url,
     allow_invalid_certs: bool,
@@ -361,7 +487,7 @@ fn build_http_client(
 
     let mut builder = Client::builder()
         .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(20))
+        .timeout(Duration::from_secs(30))
         .tcp_nodelay(true)
         .user_agent(concat!("SecuroClient/", env!("CARGO_PKG_VERSION")))
         .redirect(redirect_policy);
@@ -391,6 +517,93 @@ fn detailed_reqwest_error(endpoint: &str, err: &reqwest::Error) -> String {
         out.push_str(&format!("Debug: {err:#?}\n"));
     }
     out
+}
+
+pub async fn execute_proxy_request(
+    client: &Client,
+    parsed_base: &reqwest::Url,
+    target_url: reqwest::Url,
+    method: &str,
+    headers: Vec<(String, String)>,
+    body: Option<Vec<u8>>,
+) -> Result<ProxyHttpResponse, AppError> {
+    let req_method = reqwest::Method::from_bytes(method.trim().to_uppercase().as_bytes())
+        .map_err(|err| AppError::with_details(ErrorCode::InvalidUrl, err.to_string()))?;
+
+    let mut req_builder = client.request(req_method.clone(), target_url.clone());
+
+    let mut has_origin = false;
+    let mut has_referer = false;
+
+    for (name, value) in headers {
+        let lower = name.trim().to_ascii_lowercase();
+        if matches!(
+            lower.as_str(),
+            "host" | "content-length" | "transfer-encoding" | "connection"
+        ) {
+            continue;
+        }
+        if lower == "origin" {
+            has_origin = true;
+        } else if lower == "referer" {
+            has_referer = true;
+        }
+        req_builder = req_builder.header(name.trim(), value);
+    }
+
+    let origin_str = parsed_base.origin().ascii_serialization();
+    if origin_str != "null" {
+        if !has_origin {
+            req_builder = req_builder.header("Origin", &origin_str);
+        }
+        if !has_referer {
+            req_builder = req_builder.header("Referer", format!("{origin_str}/"));
+        }
+    }
+
+    if let Some(body_bytes) = body
+        && req_method != reqwest::Method::GET
+        && req_method != reqwest::Method::HEAD
+    {
+        req_builder = req_builder.body(body_bytes);
+    }
+
+    let resp = req_builder.send().await.map_err(|err| {
+        let detail = detailed_reqwest_error(target_url.as_str(), &err);
+        AppError::with_details(ErrorCode::ServerUnreachable, detail)
+    })?;
+
+    let status = resp.status().as_u16();
+    let status_text = resp.status().canonical_reason().unwrap_or("").to_string();
+    let final_url = resp.url().to_string();
+
+    let resp_headers = resp
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|v| (name.as_str().to_string(), v.to_string()))
+        })
+        .collect();
+
+    let resp_body = resp
+        .bytes()
+        .await
+        .map_err(|err| {
+            let detail = detailed_reqwest_error(target_url.as_str(), &err);
+            AppError::with_details(ErrorCode::ServerUnreachable, detail)
+        })?
+        .to_vec();
+
+    Ok(ProxyHttpResponse {
+        status,
+        status_text,
+        url: final_url,
+        headers: resp_headers,
+        body: resp_body,
+    })
 }
 
 fn reset_main_webview_session(app: &tauri::AppHandle, navigate_away: bool) {
@@ -497,6 +710,32 @@ pub fn get_connection_settings(app: tauri::AppHandle) -> Result<ConnectionSettin
 }
 
 #[tauri::command]
+pub async fn proxy_api_request(
+    app: tauri::AppHandle,
+    url: String,
+    method: String,
+    headers: Vec<(String, String)>,
+    body: Option<Vec<u8>>,
+) -> Result<ProxyHttpResponse, AppError> {
+    let settings = get_connection_settings(app.clone())?;
+    let raw_server_url = settings.server_url.ok_or_else(|| {
+        AppError::with_details(ErrorCode::InvalidUrl, "No Securo server is configured.")
+    })?;
+    let normalized_url = normalize_url(&raw_server_url)?;
+    let parsed_base = reqwest::Url::parse(&normalized_url)
+        .map_err(|err| AppError::with_details(ErrorCode::InvalidUrl, err.to_string()))?;
+    let target_url = resolve_and_validate_api_url(&normalized_url, &url)?;
+
+    let client = if let Some(state) = app.try_state::<SecurityState>() {
+        state.get_or_build_client(&normalized_url, &parsed_base, settings.allow_invalid_certs)?
+    } else {
+        build_http_client(&parsed_base, settings.allow_invalid_certs)?
+    };
+
+    execute_proxy_request(&client, &parsed_base, target_url, &method, headers, body).await
+}
+
+#[tauri::command]
 pub fn set_auto_connect(
     app: tauri::AppHandle,
     webview: tauri::WebviewWindow,
@@ -540,7 +779,11 @@ pub async fn connect_server(
     let normalized_url = normalize_url(&server_url)?;
     let parsed_base = reqwest::Url::parse(&normalized_url)
         .map_err(|err| AppError::with_details(ErrorCode::InvalidUrl, err.to_string()))?;
-    let client = build_http_client(&parsed_base, allow_invalid_certs)?;
+    let client = if let Some(state) = app.try_state::<SecurityState>() {
+        state.get_or_build_client(&normalized_url, &parsed_base, allow_invalid_certs)?
+    } else {
+        build_http_client(&parsed_base, allow_invalid_certs)?
+    };
 
     let candidates = [
         (format!("{normalized_url}/api/health"), false),
@@ -1027,10 +1270,131 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_and_validate_api_url_enforces_strict_api_scope() {
+        let base = "https://securo.domain.com";
+        assert_eq!(
+            resolve_and_validate_api_url(base, "/api/auth/login")
+                .unwrap()
+                .as_str(),
+            "https://securo.domain.com/api/auth/login"
+        );
+        assert_eq!(
+            resolve_and_validate_api_url(base, "api/health?check=1#hash")
+                .unwrap()
+                .as_str(),
+            "https://securo.domain.com/api/health?check=1"
+        );
+        assert_eq!(
+            resolve_and_validate_api_url(base, "https://securo.domain.com/api/accounts")
+                .unwrap()
+                .as_str(),
+            "https://securo.domain.com/api/accounts"
+        );
+
+        let subpath_base = "https://securo.domain.com/finance";
+        assert_eq!(
+            resolve_and_validate_api_url(subpath_base, "/api/accounts")
+                .unwrap()
+                .as_str(),
+            "https://securo.domain.com/finance/api/accounts"
+        );
+        assert_eq!(
+            resolve_and_validate_api_url(
+                subpath_base,
+                "https://securo.domain.com/finance/api/accounts"
+            )
+            .unwrap()
+            .as_str(),
+            "https://securo.domain.com/finance/api/accounts"
+        );
+
+        assert_eq!(
+            resolve_and_validate_api_url(base, "/api/../admin")
+                .unwrap_err()
+                .code,
+            ErrorCode::ProxyForbidden
+        );
+        assert_eq!(
+            resolve_and_validate_api_url(base, "/api/%2e%2e/admin")
+                .unwrap_err()
+                .code,
+            ErrorCode::ProxyForbidden
+        );
+        assert_eq!(
+            resolve_and_validate_api_url(base, "https://evil.example/api/auth/login")
+                .unwrap_err()
+                .code,
+            ErrorCode::ProxyForbidden
+        );
+        assert_eq!(
+            resolve_and_validate_api_url(base, "/admin/config")
+                .unwrap_err()
+                .code,
+            ErrorCode::ProxyForbidden
+        );
+    }
+
+    #[test]
     fn test_build_http_client_creation() {
         let base = reqwest::Url::parse("https://securo.local").unwrap();
         assert!(build_http_client(&base, false).is_ok());
         assert!(build_http_client(&base, true).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_proxy_request_handles_post_form_and_http_errors() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 2048];
+                let n = socket.read(&mut buf).await.unwrap_or(0);
+                let req_str = String::from_utf8_lossy(&buf[..n]);
+                assert!(req_str.starts_with("POST /api/auth/login HTTP/1.1"));
+                assert!(
+                    req_str
+                        .to_ascii_lowercase()
+                        .contains("origin: http://127.0.0.1:")
+                );
+                assert!(req_str.contains("username=user%40example.com"));
+                let body = r#"{"access_token":"jwt_123","token_type":"bearer"}"#;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+            }
+        });
+
+        let base_str = format!("http://127.0.0.1:{port}");
+        let base = reqwest::Url::parse(&base_str).unwrap();
+        let client = build_http_client(&base, false).unwrap();
+        let target = resolve_and_validate_api_url(&base_str, "/api/auth/login").unwrap();
+
+        let res = execute_proxy_request(
+            &client,
+            &base,
+            target,
+            "POST",
+            vec![(
+                "Content-Type".to_string(),
+                "application/x-www-form-urlencoded".to_string(),
+            )],
+            Some(b"username=user%40example.com&password=secret".to_vec()),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(res.status, 200);
+        assert_eq!(
+            String::from_utf8(res.body).unwrap(),
+            r#"{"access_token":"jwt_123","token_type":"bearer"}"#
+        );
     }
 
     #[tokio::test]
