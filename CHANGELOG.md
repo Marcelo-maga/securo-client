@@ -2,6 +2,13 @@
 
 All notable changes to the Securo Client project are documented in this file.
 
+## [0.5.1](https://github.com/Marcelo-maga/securo-client/compare/v0.5.0...v0.5.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **ci:** trigger release workflow on published releases ([3645d25](https://github.com/Marcelo-maga/securo-client/commit/3645d255a1e4af0c40ee25429f8c74b84138925b))
+
 # [0.5.0](https://github.com/Marcelo-maga/securo-client/compare/v0.4.0...v0.5.0) (2026-11-20)
 
 
