@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - "v*"
+  release:
+    types:
+      - published
   workflow_dispatch:
     inputs:
       platform:
@@ -48,8 +51,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && github.event_name != 'release' }}
 
 env:
   SECURO_REPOSITORY: securo-finance/securo
@@ -69,6 +72,7 @@ jobs:
   # =========================================================================
   prepare-frontend:
     name: Prepare & Stage Frontend Bundle
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout native client
@@ -112,7 +116,7 @@ jobs:
   windows:
     name: Windows Desktop (x64)
     needs: [prepare-frontend]
-    if: github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'windows'
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'windows'
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -178,12 +182,12 @@ jobs:
   android:
     name: Android APK (${{ matrix.arch }})
     needs: [prepare-frontend]
-    if: github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'android'
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'android'
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
-        arch: ${{ (github.event_name == 'push' || inputs.android_arch == 'all' || inputs.android_arch == '') && fromJSON('["aarch64", "armv7", "x86_64"]') || fromJSON(format('["{0}"]', inputs.android_arch)) }}
+        arch: ${{ (github.event_name != 'workflow_dispatch' || inputs.android_arch == 'all' || inputs.android_arch == '') && fromJSON('["aarch64", "armv7", "x86_64"]') || fromJSON(format('["{0}"]', inputs.android_arch)) }}
     steps:
       - name: Checkout native client
         uses: actions/checkout@v7
@@ -405,7 +409,7 @@ jobs:
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       (needs.windows.result == 'success' || needs.android.result == 'success') &&
-      (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+      (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')) || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -433,8 +437,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('manual-{0}', github.run_number) }}
+          tag_name: ${{ github.event.release.tag_name || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || format('manual-{0}', github.run_number) }}
           files: release-artifacts/*
           fail_on_unmatched_files: true
-          generate_release_notes: true
-          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease == true }}
+          generate_release_notes: ${{ github.event_name != 'release' }}
+          prerelease: ${{ (github.event_name == 'workflow_dispatch' && inputs.prerelease == true) || (github.event_name == 'release' && github.event.release.prerelease == true) }}

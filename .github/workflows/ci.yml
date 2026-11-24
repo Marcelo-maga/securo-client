@@ -96,7 +96,6 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
-      actions: write
     steps:
       - name: Checkout repository with full commit history
         uses: actions/checkout@v7
