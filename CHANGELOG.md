@@ -2,6 +2,13 @@
 
 All notable changes to the Securo Client project are documented in this file.
 
+# [0.6.0](https://github.com/Marcelo-maga/securo-client/compare/v0.5.1...v0.6.0) (2026-11-24)
+
+
+### Features
+
+* **upstream:** update frontend to securo v0.22.0 ([f197918](https://github.com/Marcelo-maga/securo-client/commit/f197918f9fa3b6019883a70aabb7324920e60229))
+
 ## [0.5.1](https://github.com/Marcelo-maga/securo-client/compare/v0.5.0...v0.5.1) (2026-11-24)
 
 
